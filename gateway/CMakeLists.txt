@@ -24,6 +24,11 @@ add_subdirectory(
     ${CMAKE_CURRENT_BINARY_DIR}/wakaama
 )
 
+set(
+    WAKAAMA_CLIENT_COMMON_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/../experiments/wakaama/examples/client/common
+)
+
 add_library(ota_gateway_objects STATIC)
 
 target_sources(
@@ -31,6 +36,10 @@ target_sources(
     PRIVATE
         src/object_bms.c
         include/object_bms.h
+        include/standard_objects.h
+        ${WAKAAMA_CLIENT_COMMON_DIR}/object_security.c
+        ${WAKAAMA_CLIENT_COMMON_DIR}/object_server.c
+        ${WAKAAMA_CLIENT_COMMON_DIR}/object_device.c
 )
 
 target_include_directories(

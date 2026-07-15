@@ -1,4 +1,5 @@
 #include "wakaama_hooks.h"
+int g_reboot = 0;
 
 void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
 {
