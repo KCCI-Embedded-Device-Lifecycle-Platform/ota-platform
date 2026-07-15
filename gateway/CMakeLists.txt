@@ -49,6 +49,7 @@ add_executable(
     ota_gateway
     src/main.cpp
     src/wakaama_hooks.c
+    include/wakaama_hooks.h
 )
 
 target_link_libraries(
