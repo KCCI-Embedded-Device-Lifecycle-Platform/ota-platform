@@ -1,0 +1,3 @@
+[submodule "experiments/wakaama"]
+	path = experiments/wakaama
+	url = https://github.com/eclipse-wakaama/wakaama.git
