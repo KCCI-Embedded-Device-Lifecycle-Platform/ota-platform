@@ -55,9 +55,24 @@ target_link_libraries(
 )
 
 add_executable(
+    ota_gateway_smoke
+    tests/gateway_smoke.cpp
+    src/wakaama_hooks.c
+    include/wakaama_hooks.h
+)
+
+target_link_libraries(
+    ota_gateway_smoke
+    PRIVATE
+        ota_gateway_objects
+)
+
+add_executable(
     ota_gateway
     src/main.cpp
+    src/gateway_app.cpp
     src/wakaama_hooks.c
+    include/gateway_app.hpp
     include/wakaama_hooks.h
 )
 
