@@ -1,4 +1,5 @@
 #include "object_bms.h"
+#include "object_firmware.h"
 #include "standard_objects.h"
 #include "wakaama_hooks.h"
 //#include <bits/stdc++.h>
@@ -11,8 +12,9 @@ using namespace std;
 constexpr uint16_t SECURITY_OBJECT_INDEX = 0;
 constexpr uint16_t SERVER_OBJECT_INDEX = 1;
 constexpr uint16_t DEVICE_OBJECT_INDEX = 2;
-constexpr uint16_t BMS_OBJECT_INDEX = 3;
-constexpr uint16_t CLIENT_OBJECT_COUNT = 4;
+constexpr uint16_t FIRMWARE_OBJECT_INDEX = 3;
+constexpr uint16_t BMS_OBJECT_INDEX = 4;
+constexpr uint16_t CLIENT_OBJECT_COUNT = 5;
 
 static bool testSecurityObject()
 {
@@ -55,6 +57,69 @@ static bool testServerObject()
 
     clean_server_object(serverObjectP);
     lwm2m_free(serverObjectP);
+
+    return validObject;
+}
+
+static bool testFirmwareObject()
+{
+    lwm2m_object_t *firmwareObjectP = get_firmware_update_object();
+
+    if (firmwareObjectP == nullptr)
+        return false;
+
+    int numData = 0;
+    lwm2m_data_t *dataArrayP = nullptr;
+
+    uint8_t readResult = firmwareObjectP->readFunc(
+        nullptr,
+        0,
+        &numData,
+        &dataArrayP,
+        firmwareObjectP
+    );
+
+    int64_t state = -1;
+    int64_t updateResult = -1;
+    lwm2m_data_t packageData{};
+    packageData.id = 0;
+
+    uint8_t packageWriteResult = firmwareObjectP->writeFunc(
+        nullptr,
+        0,
+        1,
+        &packageData,
+        firmwareObjectP,
+        LWM2M_WRITE_PARTIAL_UPDATE
+    );
+
+    uint8_t updateExecuteResult = firmwareObjectP->executeFunc(
+        nullptr,
+        0,
+        2,
+        nullptr,
+        0,
+        firmwareObjectP
+    );
+
+    bool validObject =
+        firmwareObjectP->objID == LWM2M_FIRMWARE_UPDATE_OBJECT_ID &&
+        readResult == COAP_205_CONTENT &&
+        numData == 2 &&
+        dataArrayP != nullptr &&
+        dataArrayP[0].id == 3 &&
+        dataArrayP[1].id == 5 &&
+        lwm2m_data_decode_int(&dataArrayP[0], &state) != 0 &&
+        lwm2m_data_decode_int(&dataArrayP[1], &updateResult) != 0 &&
+        state == 0 &&
+        updateResult == 0 &&
+        packageWriteResult == COAP_501_NOT_IMPLEMENTED &&
+        updateExecuteResult == COAP_501_NOT_IMPLEMENTED;
+
+    if (dataArrayP != nullptr)
+        lwm2m_data_free(numData, dataArrayP);
+
+    free_firmware_update_object(firmwareObjectP);
 
     return validObject;
 }
@@ -107,16 +172,22 @@ static bool testConnectionClose()
 
 static void freeClientObjects(lwm2m_object_t *objects[])
 {
-    if (objects[DEVICE_OBJECT_INDEX] != nullptr)
-    {
-        free_object_device(objects[DEVICE_OBJECT_INDEX]);
-        objects[DEVICE_OBJECT_INDEX] = nullptr;
-    }
-
     if (objects[BMS_OBJECT_INDEX] != nullptr)
     {
         free_bms_object(objects[BMS_OBJECT_INDEX]);
         objects[BMS_OBJECT_INDEX] = nullptr;
+    }
+
+    if (objects[FIRMWARE_OBJECT_INDEX] != nullptr)
+    {
+        free_firmware_update_object(objects[FIRMWARE_OBJECT_INDEX]);
+        objects[FIRMWARE_OBJECT_INDEX] = nullptr;
+    }
+
+    if (objects[DEVICE_OBJECT_INDEX] != nullptr)
+    {
+        free_object_device(objects[DEVICE_OBJECT_INDEX]);
+        objects[DEVICE_OBJECT_INDEX] = nullptr;
     }
 
     if (objects[SERVER_OBJECT_INDEX] != nullptr)
@@ -157,6 +228,13 @@ int main()
         return 1;
     }
     cout << "Server object test passed\n";
+
+    if (!testFirmwareObject())
+    {
+        cerr << "Firmware Update object test failed\n";
+        return 1;
+    }
+    cout << "Firmware Update object test passed\n";
 
     gateway_client_context_t clientContext{};
 
@@ -216,11 +294,13 @@ int main()
     objects[SECURITY_OBJECT_INDEX] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
     objects[SERVER_OBJECT_INDEX] = get_server_object(serverId, "U", lifetime, false);
     objects[DEVICE_OBJECT_INDEX] = get_object_device();
+    objects[FIRMWARE_OBJECT_INDEX] = get_firmware_update_object();
     objects[BMS_OBJECT_INDEX] = get_bms_object();
 
     if (objects[SECURITY_OBJECT_INDEX] == nullptr ||
         objects[SERVER_OBJECT_INDEX] == nullptr ||
         objects[DEVICE_OBJECT_INDEX] == nullptr ||
+        objects[FIRMWARE_OBJECT_INDEX] == nullptr ||
         objects[BMS_OBJECT_INDEX] == nullptr)
     {
         cerr << "Failed to create client objects\n";
@@ -275,7 +355,7 @@ int main()
     cout << "Wakaama configured as " << endpointName << '\n';
 
     cout << "Client object array created: "
-         << "/0, /1, /3, /33000\n";
+         << "/0, /1, /3, /5, /33000\n";
 
     time_t timeoutSeconds = 60;
 

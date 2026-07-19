@@ -22,8 +22,9 @@ private:
     static constexpr std::size_t SecurityObjectIndex = 0;
     static constexpr std::size_t ServerObjectIndex = 1;
     static constexpr std::size_t DeviceObjectIndex = 2;
-    static constexpr std::size_t BmsObjectIndex = 3;
-    static constexpr std::size_t objectCount = 4;
+    static constexpr std::size_t FirmwareObjectIndex = 3;
+    static constexpr std::size_t BmsObjectIndex = 4;
+    static constexpr std::size_t objectCount = 5;
 
     gateway_client_context_t clientContext;
     lwm2m_context_t *lwm2mContextP;

@@ -1,272 +1,387 @@
 # Development Status
 
-Last updated: 2026-07-16
+Last updated: 2026-07-19
 
 이 문서는 새 개발 세션이 현재 작업 지점부터 바로 이어갈 수 있도록 관리하는
-인수인계 문서다. 전체 시스템의 장기 구조와 설계 결정은
-[`ARCHITECTURE.md`](ARCHITECTURE.md)를 참고한다. `DESIGN.md`는 UI 디자인 전용
-문서이므로 이 개발 상태 문서와 역할이 다르다.
+인수인계 문서다. 전체 시스템 구조와 장기 결정은
+[`ARCHITECTURE.md`](ARCHITECTURE.md)를 참고한다. `DESIGN.md`는 UI 디자인
+전용 문서다.
 
 ## 1. 학습 및 진행 원칙
 
-- 사용자가 코드를 직접 작성한다.
-- 한 번에 함수 하나, 멤버 하나, 또는 작은 개념 하나만 진행한다.
-- 큰 코드를 먼저 완성하거나 여러 파일을 한꺼번에 수정하지 않는다.
-- C, C++, Java, Wakaama 개념을 이미 안다고 가정하지 않는다.
-- 포인터가 가리키는 대상, 소유권, 수명, 반환값을 매 단계 설명한다.
-- 사용자가 빌드 또는 실행 결과를 확인한 뒤 다음 단계로 이동한다.
-- 현재는 구조를 배우며 만드는 단계이므로 불필요한 추상화를 추가하지 않는다.
+- 사용자가 코드를 직접 이해하면서 진행한다.
+- 한 단계에서는 하나의 작은 책임이나 검증 가능한 흐름을 구현한다.
+- C, C++, Java, Spring, Leshan, Wakaama 개념을 이미 안다고 가정하지 않는다.
+- 포인터의 대상과 소유권, Java Bean의 생성 시점과 의존성 주입을 설명한다.
+- 코드가 호출되는 시점과 protocol request/response 흐름을 함께 설명한다.
+- 사용자가 build 또는 실행 결과를 확인한 뒤 다음 단계로 이동한다.
+- 동작을 확인하기 전 불필요한 추상화와 대규모 rename을 먼저 하지 않는다.
 
-## 2. 확정된 기술 선택
+## 2. 2026-07-19 아키텍처 피벗
 
-- Central Server: Java 21, Maven, Spring Boot, Eclipse Leshan 내장
-- Gateway Agent: C++20 애플리케이션 + Eclipse Wakaama C 라이브러리
-- LwM2M transport: POSIX UDP
-- 개발 단계 보안: NoSec (`coap://`)
-- 향후 보안: DTLS 적용 필요
-- 개발용 LwM2M Server: Leshan Demo Server 2.0.0-M18
-- Gateway endpoint: `gateway-01`
-- Leshan CoAP 주소: `127.0.0.1:5683`
-- Gateway 로컬 UDP 포트: `56830`
+### 2.1 결정
+
+인터넷에 직접 연결 가능한 MCU 및 Embedded Linux 장치는 각각 LwM2M Client를
+탑재하고 중앙 Leshan Server에 직접 연결한다.
+
+```text
+Device LwM2M Client  <---- CoAP/DTLS ---->  Leshan LwM2M Server
+  /3 /5 /telemetry
+```
+
+Gateway를 제거해도 LwM2M을 제거하는 것이 아니다. custom 서버-클라이언트
+protocol 대신 표준 LwM2M Client-Server 구조를 더 직접적으로 사용한다.
+
+Gateway는 향후 BLE, CAN, RS-485, 레거시 non-IP 장치를 지원해야 할 때만 별도
+adapter로 추가한다.
+
+### 2.2 중단한 계획
+
+현재 제품 기본 경로에서는 다음을 구현하지 않는다.
+
+- LwM2M Gateway Object `/25`
+- prefixed End Device Object routing
+- Gateway와 하위 MCU 사이 custom TCP binary protocol
+- Gateway가 여러 인터넷 연결 장치의 ID와 Object Instance를 중계하는 구조
+- 하위 장치 전송을 위한 Boost.Asio session manager
+- Fake STM32를 Gateway 뒤에 붙이는 기존 OTA 시나리오
+
+### 2.3 기존 코드 처리
+
+현재 `gateway/`, `GatewayApp`, `gateway_client_context_t`,
+`ota_gateway` 이름은 기존 설계에서 남아 있다. 코드를 폐기하지 않고 **직접
+연결 BMS Device의 Linux reference LwM2M Client**로 재사용한다.
+
+이름 변경은 `/5` 기본 흐름을 보존하는 상태에서 별도 단계로 수행한다. 현재
+`connectionList`는 하위 Device 목록이 아니라 LwM2M Server transport
+connection 목록이므로 그대로 필요하다.
+
+## 3. 현재 기술 선택
+
+### Server
+
+- Java: 21
+- Build: Maven
+- Framework: Spring Boot 4.1.0
+- LwM2M Server: Eclipse Leshan 2.0.0-M18 embedded
+- HTTP port: `8081`
+- LwM2M CoAP port: `5683`
+
+### Reference Device Client
+
+- C++20 application + Eclipse Wakaama C library
+- Wakaama snapshot: `94ff56f77a2d24a5890e0e703809a47633aa7d4b`
+- Transport: POSIX UDP
+- 개발 보안: NoSec `coap://`
+- Server address: `127.0.0.1:5683`
+- Local UDP port: `56830`
 - Short Server ID: `123`
-- Registration lifetime: `300`초
+- Lifetime: `300` seconds
 - Binding: `U`
+- 현재 test endpoint: `gateway-01`
 
-이전에 작성하던 C# ASP.NET Core 서버 방향은 중단했다. 현재 서버 방향은
-Java/Spring Boot/Leshan이며, 실제 제품 서버 프로젝트는 아직 생성하지 않았다.
+`gateway-01`은 현재 회귀 테스트를 보존하기 위한 역사적 이름이며 제품
+identity 결정이 아니다. 이후 실제 Device serial 또는 provisioning으로 발급된
+안정적인 endpoint name으로 바꾼다.
 
-## 3. 의존성 및 실험 환경
+Wakaama는 현재 reference client 구현이다. 최종적으로 모든 MCU/Linux 장치에
+동일 SDK를 강제하지 않는다. 표준 호환성, `/5` 완성도, 자원 사용량, 보안,
+라이선스를 기준으로 platform별 Client를 선택할 수 있다.
 
-- Wakaama Git submodule:
-  `94ff56f77a2d24a5890e0e703809a47633aa7d4b`
-- Wakaama 내부 tinyDTLS submodule:
-  `86f23c65ffde9d46b6487d2210d98d58a41257d5`
-- Wakaama 위치: `experiments/wakaama`
-- Leshan Demo 파일 위치: `experiments/leshan-demo`
-- Java 확인 버전: OpenJDK/Javac 21.0.11
-- Maven 확인 버전: 3.8.7
+### Persistence and artifacts
 
-Leshan Demo와 Wakaama 예제 클라이언트 간에는 다음 동작을 확인했다.
-
-- Wakaama endpoint 등록
-- Leshan 웹 UI에서 endpoint 조회
-- Device Object Manufacturer 리소스 Read 요청 및 응답
-- Registration Update
-- Deregistration 후 Leshan 목록에서 endpoint 제거
+- 제품 persistence DB: PostgreSQL 18 방향 결정
+- `server/compose.yaml`: PostgreSQL 18 개발 환경 초안, application 미연동
+- JDBC/JPA 또는 migration dependency와 schema: 아직 없음
+- Firmware binary storage: local filesystem부터 시작 가능, adapter 미구현
+- Object Storage 제품 선택: 아직 없음
+- CDN: 현재 milestone에 사용하지 않음
 
 ## 4. 현재 저장소 구조
 
 ```text
 ota_project/
-├── ARCHITECTURE.md                 # 전체 소프트웨어 아키텍처
-├── DEVELOPMENT_STATUS.md           # 현재 작업 인수인계
-├── DESIGN.md                       # UI 디자인 전용, 수정하지 않음
+├── ARCHITECTURE.md
+├── DEVELOPMENT_STATUS.md
+├── DESIGN.md
 ├── experiments/
-│   ├── leshan-demo/                # 개발용 Leshan Demo 실행 파일
-│   └── wakaama/                    # Wakaama Git submodule
-└── gateway/
-    ├── CMakeLists.txt
-    ├── include/
-    │   ├── gateway_app.hpp
-    │   ├── object_bms.h
-    │   ├── standard_objects.h
-    │   └── wakaama_hooks.h
-    ├── src/
-    │   ├── main.cpp
-    │   ├── gateway_app.cpp
-    │   ├── object_bms.c
-    │   └── wakaama_hooks.c
-    └── tests/
-        └── gateway_smoke.cpp
+│   ├── leshan-demo/
+│   └── wakaama/
+├── gateway/                         # historical name; reference Device Client
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   ├── gateway_app.hpp
+│   │   ├── object_bms.h
+│   │   ├── object_firmware.h
+│   │   ├── standard_objects.h
+│   │   └── wakaama_hooks.h
+│   ├── src/
+│   │   ├── main.cpp
+│   │   ├── gateway_app.cpp
+│   │   ├── object_bms.c
+│   │   ├── object_firmware.c
+│   │   └── wakaama_hooks.c
+│   └── tests/
+│       └── gateway_smoke.cpp
+└── server/
+    ├── pom.xml
+    ├── compose.yaml                  # PostgreSQL development draft
+    └── src/main/
+        ├── java/ota/platform/server/
+        │   ├── OtaServerApplication.java
+        │   ├── config/LeshanServerConfiguration.java
+        │   ├── listener/GatewayRegistrationListener.java
+        │   ├── controller/GatewayController.java
+        │   └── telemetry/
+        │       ├── BmsTelemetry.java
+        │       └── BmsTelemetryStore.java
+        └── resources/
+            ├── application.properties
+            └── models/bms.xml
 ```
 
-## 5. 구현 완료 항목
+## 5. Reference Device Client 구현 완료
 
-### 5.1 빌드 구조
+### 5.1 Build와 target
 
-- C99와 C++20을 함께 사용하는 CMake 프로젝트
+- C99와 C++20을 함께 사용하는 CMake project
 - Wakaama를 subdirectory로 포함
-- Wakaama 예제 빌드는 끄고 필요한 라이브러리만 링크
-- `ota_gateway_objects` 정적 라이브러리 생성
-- 실제 애플리케이션 실행 파일 `ota_gateway` 생성
-- 실험 및 통합 확인용 실행 파일 `ota_gateway_smoke` 분리
+- `ota_gateway_objects` static library
+- `ota_gateway` reference client executable
+- `ota_gateway_smoke` integration/smoke executable
 
-### 5.2 Custom BMS Object
+Target 이름은 아직 historical name을 유지한다.
 
-- Object ID: `/33000`
-- Instance ID: `/33000/0`
-- Voltage Resource: `/33000/0/0`
-- 데이터 타입: Float
-- 현재 초기값: `12.7`
-- Object factory: `get_bms_object()`
-- Object cleanup: `free_bms_object()`
-- Read callback에서 전체 리소스 요청과 특정 리소스 요청 처리
-- C와 C++ 양쪽에서 사용할 수 있는 공개 헤더 구성
-
-### 5.3 Wakaama 연결 어댑터
-
-`gateway_client_context_t`에 다음 값을 모았다.
-
-- Security Object 포인터
-- UDP socket file descriptor
-- Wakaama UDP connection 연결 목록
-- address family
-- Leshan host와 port
-
-다음 Wakaama platform hook을 구현했다.
-
-- `lwm2m_connect_server()`
-- `lwm2m_close_connection()`
-- Wakaama가 요구하는 전역 `g_reboot`
-
-연결 목록에서 첫 노드와 중간 노드를 제거하는 동작을 smoke test에서 확인했다.
-
-### 5.4 Standard Object 연결
-
-Wakaama 예제 구현을 현재 gateway target에 연결했다.
+### 5.2 LwM2M Objects
 
 - Security Object `/0`
 - Server Object `/1`
 - Device Object `/3`
+- Firmware Update Object `/5` Read wiring scaffold
 - Custom BMS Object `/33000`
+- BMS voltage `/33000/0/0`, Float, initial value `12.7`
 
-`standard_objects.h`는 Wakaama 예제 C 함수들을 C++ 코드에서 호출하기 위한
-공개 선언을 제공한다.
+`object_bms.c`는 전체 Resource Read와 특정 Resource Read를 처리하고,
+`free_bms_object()`로 정리한다.
 
-### 5.5 제품 Gateway LwM2M 흐름
+### 5.3 Transport와 lifecycle
 
-`GatewayApp` 제품 실행 경로에서 다음 흐름을 구현하고 확인했다.
+`GatewayApp`의 현재 동작:
 
 1. UDP socket 생성
-2. Security, Server, Device, BMS Object 생성
-3. `lwm2m_init()`과 `lwm2m_configure()` 호출
-4. 반복 `lwm2m_step()`에서 Registration 요청 송신
-5. `select()`와 `recvfrom()`으로 Leshan 응답 수신
-6. 송신자 주소를 connection과 매칭해 `lwm2m_handle_packet()` 호출
-7. 다음 `lwm2m_step()`에서 `STATE_READY` 전환
-8. READY 이후 같은 loop에서 서버 요청과 시간 기반 작업 처리
-9. SIGINT 또는 SIGTERM에서 loop 종료
-10. 소멸자에서 Deregistration과 자원 정리
+2. `/0`, `/1`, `/3`, `/5`, `/33000` Object 생성
+3. `lwm2m_init()`과 `lwm2m_configure()`
+4. `lwm2m_step()`으로 Registration 시작
+5. `select()`, `recvfrom()`으로 packet 수신
+6. sender를 `connectionList`에서 찾음
+7. `lwm2m_handle_packet()`으로 Wakaama에 전달
+8. `STATE_READY` 이후 같은 loop에서 Read 등 server request 처리
+9. SIGINT/SIGTERM에서 loop 종료
+10. Deregistration 후 context, connections, Objects, socket 정리
 
-Leshan Demo의 HTTP API로 `/33000/0/0`을 실제 Read했다.
+Object pointer, Wakaama context, connection list, socket의 생성 실패 및 정리
+경로를 smoke test와 실제 실행으로 확인했다.
+
+### 5.4 통합 검증
+
+- Leshan Registration과 `STATE_READY`
+- Registration Update
+- `/3` Read
+- `/33000/0/0` Read
+- SIGINT 정상 종료와 Deregistration
+
+Leshan Demo에는 `/33000` model이 없어 raw OPAQUE
+`414b3333`으로 보였고, 제품 embedded Leshan은 `bms.xml`을 로드해 Float로
+decode하는 것을 확인했다.
+
+## 6. Embedded Leshan Server 구현 완료
+
+### 6.1 Spring lifecycle
+
+- `@SpringBootApplication` 진입점
+- `@Configuration`의 `LeshanServer` Bean
+- Bean `initMethod = "start"`, `destroyMethod = "destroy"`
+- Californium UDP endpoint provider
+- Leshan default models와 `models/bms.xml` load
+
+Spring Boot가 `ota.platform.server` 하위 package를 component scan하면서
+Configuration, Listener, Controller, Store를 생성한다. Constructor parameter를
+통해 필요한 Bean을 주입한다.
+
+### 6.2 Registration events
+
+`GatewayRegistrationListener`가 다음 event를 logging한다.
+
+- registered
+- updated
+- unregistered와 expired 여부
+
+실제 reference client의 등록과 정상 해제 log를 확인했다.
+
+### 6.3 BMS API와 임시 저장
+
+현재 API:
 
 ```text
-GET /api/clients/gateway-01/33000/0/0
--> CONTENT(205)
--> OPAQUE 414b3333
--> IEEE-754 Float 12.7
+GET /api/gateways/{endpoint}/bms/voltage
+GET /api/gateways/{endpoint}/bms/voltage/latest
 ```
 
-Demo JAR에는 `/33000` Object model이 없어 응답을 Float 대신 OPAQUE raw bytes로
-표시한다. 현재 Demo 실험에는 별도 XML model을 추가하지 않는다. 제품용 embedded
-Leshan 서버에서는 BMS Object schema와 model metadata를 정식으로 제공해야 한다.
+첫 API는 Leshan으로 `ReadRequest(33000, 0, 0)`을 보내고, Float 응답을
+`BmsTelemetry` record로 변환한 뒤 `BmsTelemetryStore`에 저장한다.
 
-## 6. GatewayApp 리팩터링 완료 상태
+`BmsTelemetryStore`는 `ConcurrentHashMap<String, BmsTelemetry>`으로
+endpoint별 최신값 하나만 보관한다. 서버를 재시작하면 사라지는 의도적인
+임시 구현이며 DB를 대체하지 않는다.
 
-기존 `main.cpp`의 spike 코드는 `tests/gateway_smoke.cpp`로 옮겼고 제품 진입점은
-`GatewayApp` 생성, `initialize()`, `run()` 호출만 담당한다.
+서버 build, UDP `5683` listen, reference client registration, HTTP Read 및
+latest 응답을 확인했다.
 
-`GatewayApp`이 소유하는 자원:
+## 7. 현재 한계와 기술 부채
 
-- `gateway_client_context_t`와 UDP socket 상태
-- 네 개의 LwM2M Object 포인터 배열
-- `lwm2m_context_t *`
-- Wakaama UDP connection list
+- `Gateway*` class, API, target 이름이 새 Device 중심 구조와 맞지 않음
+- test endpoint가 아직 `gateway-01`
+- `/5`는 State/Result Read wiring뿐이며 Package/URI/Execute는 아직 미구현
+- 실제 firmware download, hash/signature 검증, install, reboot, rollback 없음
+- NoSec만 사용
+- Device credential provisioning 없음
+- telemetry는 요청 시 Read하며 Observe/Notify 또는 Send가 아님
+- BMS 전용 Controller와 in-memory latest store만 있음
+- PostgreSQL dependency, schema, migration 없음
+- firmware binary storage adapter 없음
+- 사용자, Device ownership, Device Profile, OTA Campaign model 없음
+- custom Object model을 classpath에서 정적으로만 로드함
+- automated server test와 CTest 등록 없음
 
-`initialize()`는 socket, Object, Wakaama context를 순서대로 생성하고 configure한다.
-`run()`은 Wakaama timeout을 사용한 단일 event loop를 실행한다. 소멸자는 Wakaama
-context, 남은 connection, Object, socket 순서로 정리하며 각 포인터와 fd를 빈
-상태로 되돌린다.
+## 8. 다음 작업: Milestone 3 Direct Device Firmware Update
 
-## 7. Milestone 1 완료 상태
+DB부터 구현하지 않는다. 먼저 한 장치에서 표준 `/5` OTA protocol이 끝까지
+성립하는지 검증한다. 그래야 DB schema가 실제 OTA 상태를 기준으로 설계된다.
 
-2026-07-16에 다음 항목을 확인했다.
+### 8.1 Wakaama 예제의 현재 수준
 
-- `GatewayApp` RAII 수명 관리
-- Leshan Registration과 `STATE_READY`
-- 반복 event loop
-- 실제 Leshan 요청을 통한 `/33000/0/0` Read
-- SIGINT 기반 정상 종료와 Deregistration
+`experiments/wakaama/examples/client/common/object_firmware.c`가 존재한다.
+다음 Resource callback 형태는 참고하거나 재사용할 수 있다.
 
-## 8. 다음 작업 순서
+- Package `/5/0/0` Write
+- Package URI `/5/0/1` Write
+- Update `/5/0/2` Execute
+- State `/5/0/3` Read
+- Update Result `/5/0/5` Read
 
-다음 개발 단계는 Milestone 2 Embedded Leshan Server다. 새 세션에서는 먼저 Java
-프로젝트를 만들기 위한 Maven coordinates, package 이름, project directory와
-호환되는 Spring Boot/Leshan 버전을 확인한다. 그 뒤에도 한 번에 작은 단계로
-진행한다.
+그러나 예제는 binary를 저장하지 않고 URI를 다운로드하지 않으며, 검증, 설치,
+reboot, rollback, 상태 영속화도 하지 않는다. 따라서 build에 연결되는 것만으로
+OTA가 구현됐다고 간주하면 안 된다.
 
-1. Java 21/Maven/Spring Boot project 골격 생성
-2. Leshan server dependency와 lifecycle 통합
-3. Gateway registration event 수신
-4. BMS custom Object model과 telemetry 저장 방식 결정
-5. 최소 registration/telemetry 관리 API 구현
+### 8.2 Object wiring 완료 상태
 
-## 9. 아직 구현하지 않은 항목
+Reference client의 Object 배열에 `/5`를 추가하고 Leshan과 protocol wiring만
+먼저 검증하는 단계다.
 
-- 제품용 Java/Spring Boot/Leshan 서버 프로젝트
-- DTLS credential과 보안 연결
-- 표준 Firmware Update Object `/5`
-- firmware artifact 다운로드, hash 검증, update state machine
-- Gateway와 하위 MCU 사이의 통신
-- Fake STM32 Device
-- 서버 persistence와 관리 API/UI
-- Qt local monitor와 local API
-- 자동화된 단위 테스트 프레임워크 및 CTest 등록
+- Firmware Object의 public factory/cleanup 선언 완료
+- CMake target에 project-owned `object_firmware.c` 연결 완료
+- Object 배열을 4개에서 5개로 확장
+- 생성 실패와 cleanup 경로에 `/5` 포함
+- State `Idle(0)`, Update Result `Initial(0)` local Read smoke 검증
+- Package Write와 Update Execute가 `5.01 Not Implemented`인지 검증
+- Registration link-format의 `</5>;ver=1.0,</5/0>` 확인
+- Embedded Leshan의 실제 State/Result Read는 아직 확인하지 않음
 
-## 10. 빌드 및 실행
+이 단계에서는 실제 firmware를 설치하지 않는다. 예제 상태값과 전이가 표준과
+맞는지도 별도로 확인한 뒤 product-owned update backend를 연결한다.
 
-Configure:
+### 8.3 바로 다음 작은 단계
+
+Spring 서버에 최소 firmware status Read API를 추가한다.
+
+1. endpoint registration 조회
+2. `/5/0/3` State Read
+3. `/5/0/5` Update Result Read
+4. 두 값을 하나의 HTTP JSON 응답으로 반환
+5. 실제 reference client를 등록해 curl로 확인
+
+### 8.4 그 다음 vertical slice
+
+1. Linux 임시 파일에 firmware stream 저장
+2. 예상 SHA-256과 실제 파일 hash 비교
+3. State와 Update Result를 올바르게 변경하고 notify
+4. Update Execute에서 simulated install 수행
+5. 성공, download 실패, hash 불일치, install 실패 결과 검증
+6. Spring 서버에 최소 OTA trigger API 추가
+7. protocol 검증 뒤 Package URI download와 Object Storage adapter로 확장
+
+실제 MCU 단계에서는 같은 관리 흐름에 flash write, signature verification,
+A/B boot, boot confirmation, rollback callback을 연결한다.
+
+## 9. 이후 작업 순서
+
+1. Milestone 3 direct `/5` OTA vertical slice
+2. `Gateway*` 명칭을 `Device*`로 작은 단위 rename
+3. Device endpoint와 credential provisioning
+4. PostgreSQL schema와 migration
+5. firmware artifact metadata와 Object Storage adapter
+6. 범용 telemetry ingestion 및 Observe/Notify
+7. Device Profile과 동적 Object model registry
+8. OTA Campaign, 여러 Device 동시성, staged rollout
+9. Admin UI
+10. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
+
+## 10. Build와 실행
+
+### Reference Device Client
 
 ```bash
 cmake -S gateway -B /tmp/ota-gateway-build
-```
-
-제품 애플리케이션 빌드:
-
-```bash
 cmake --build /tmp/ota-gateway-build --target ota_gateway
-```
-
-Smoke 실행 파일 빌드:
-
-```bash
 cmake --build /tmp/ota-gateway-build --target ota_gateway_smoke
-```
-
-제품 애플리케이션 실행:
-
-```bash
 /tmp/ota-gateway-build/ota_gateway
 ```
 
-Smoke 실행에는 `127.0.0.1:5683`에서 실행 중인 Leshan이 필요하다.
+### Embedded Server
 
 ```bash
-/tmp/ota-gateway-build/ota_gateway_smoke
+cd server
+mvn clean package
+mvn spring-boot:run
 ```
 
-2026-07-16 기준으로 CMake configure와 두 target의 build를 다시 확인했다. Leshan
-Demo와 제품 Gateway를 함께 실행해 Registration, READY, BMS Read, signal shutdown,
-Deregistration까지 확인했다.
+현재 NoSec reference client 실행에는 `127.0.0.1:5683`에서 Leshan Server가
+실행 중이어야 한다.
 
-## 11. 검증 기준
+## 11. 현재 회귀 검증 기준
 
-Gateway 회귀 확인 시 최소한 다음을 확인한다.
+- `ota_gateway`와 `ota_gateway_smoke` build
+- Spring server package build
+- UDP `5683` listen
+- reference Device의 Registration과 READY 전환
+- `/33000/0/0`이 Float `12.7`로 decode
+- HTTP current/latest API 응답
+- Client 종료 후 Deregistration와 server unregister event
 
-- `ota_gateway`와 `ota_gateway_smoke` target build
-- 제품 Gateway의 `STATE_READY` 전환
-- `/33000/0/0` Read 결과가 Float `12.7`의 wire representation인지 확인
-- `Ctrl+C` 후 Deregistration 전송과 endpoint 제거
+`/5` wiring에서 다음을 확인했다.
+
+- Registration에 `/5/0` 포함
+- State `/5/0/3` local Read
+- Update Result `/5/0/5` local Read
+- `/5` cleanup을 포함한 smoke test
+
+Embedded Leshan을 통한 두 Resource Read는 다음 단계에 추가한다.
 
 ## 12. 새 세션 시작 지침
 
-새 세션에서는 먼저 `ARCHITECTURE.md`, 이 문서, 그리고 아래 파일만 읽는다.
+새 세션에서는 먼저 다음 파일을 읽는다.
 
+- `ARCHITECTURE.md`
+- `DEVELOPMENT_STATUS.md`
 - `gateway/include/gateway_app.hpp`
 - `gateway/src/gateway_app.cpp`
-- `gateway/src/main.cpp`
-- `gateway/tests/gateway_smoke.cpp`
+- `gateway/include/object_firmware.h`
+- `gateway/src/object_firmware.c`
+- `gateway/include/standard_objects.h`
 - `gateway/CMakeLists.txt`
+- `experiments/wakaama/examples/client/common/object_firmware.c`
+- `server/src/main/java/ota/platform/server/config/LeshanServerConfiguration.java`
 
-Milestone 1 Gateway 작업을 다시 구현하지 않는다. 다음에는 8절의 Embedded Leshan
-Server 준비 항목부터 이어간다.
+Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현하지
+않는다. 다음에는 8.3절의 firmware status Read API부터 이어간다. `/25` 또는
+Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

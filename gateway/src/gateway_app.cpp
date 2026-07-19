@@ -1,5 +1,6 @@
 #include "gateway_app.hpp"
 #include "object_bms.h"
+#include "object_firmware.h"
 #include "standard_objects.h"
 #include <ctime>
 #include <cerrno>
@@ -64,11 +65,13 @@ bool GatewayApp::createClientObjects()
     objects[SecurityObjectIndex] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
     objects[ServerObjectIndex] = get_server_object(serverId, binding, lifetime, false);
     objects[DeviceObjectIndex] = get_object_device();
+    objects[FirmwareObjectIndex] = get_firmware_update_object();
     objects[BmsObjectIndex] = get_bms_object();
 
     if (objects[SecurityObjectIndex] == nullptr ||
         objects[ServerObjectIndex] == nullptr ||
         objects[DeviceObjectIndex] == nullptr ||
+        objects[FirmwareObjectIndex] == nullptr ||
         objects[BmsObjectIndex] == nullptr)
     {
         cerr << "Failed to create client objects\n";
@@ -89,6 +92,12 @@ void GatewayApp::destroyClientObjects()
     {
         free_bms_object(objects[BmsObjectIndex]);
         objects[BmsObjectIndex] = nullptr;
+    }
+
+    if (objects[FirmwareObjectIndex] != nullptr)
+    {
+        free_firmware_update_object(objects[FirmwareObjectIndex]);
+        objects[FirmwareObjectIndex] = nullptr;
     }
 
     if (objects[DeviceObjectIndex] != nullptr)
@@ -129,7 +138,7 @@ bool GatewayApp::initialize()
     {
         return false;
     }
-    cout << "Client objects created: /0, /1, /3, /33000\n";
+    cout << "Client objects created: /0, /1, /3, /5 (wiring scaffold), /33000\n";
 
     lwm2mContextP = lwm2m_init(&clientContext);
 

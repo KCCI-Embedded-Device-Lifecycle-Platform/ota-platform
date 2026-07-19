@@ -36,6 +36,8 @@ target_sources(
     PRIVATE
         src/object_bms.c
         include/object_bms.h
+        src/object_firmware.c
+        include/object_firmware.h
         include/standard_objects.h
         ${WAKAAMA_CLIENT_COMMON_DIR}/object_security.c
         ${WAKAAMA_CLIENT_COMMON_DIR}/object_server.c
