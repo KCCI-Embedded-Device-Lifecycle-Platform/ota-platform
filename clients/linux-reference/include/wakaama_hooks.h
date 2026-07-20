@@ -1,5 +1,5 @@
-#ifndef OTA_GATEWAY_WAKAAMA_HOOKS_H
-#define OTA_GATEWAY_WAKAAMA_HOOKS_H
+#ifndef OTA_LINUX_REFERENCE_CLIENT_WAKAAMA_HOOKS_H
+#define OTA_LINUX_REFERENCE_CLIENT_WAKAAMA_HOOKS_H
 
 #include "liblwm2m.h"
 
@@ -22,7 +22,7 @@ typedef struct
     const char *serverHost;
     const char *serverPort;
 
-} gateway_client_context_t;
+} wakaama_client_context_t;
 
 
 #endif

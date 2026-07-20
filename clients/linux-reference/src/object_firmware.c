@@ -3,7 +3,7 @@
 #include <string.h>
 
 /*
- * Protocol-wiring scaffold only.
+ * Linux reference client protocol-wiring scaffold only.
  *
  * State and Update Result can be read, but firmware transfer and installation
  * are deliberately rejected until a real update backend is connected.
@@ -14,9 +14,11 @@
 #define FIRMWARE_RESOURCE_UPDATE 2
 #define FIRMWARE_RESOURCE_STATE 3
 #define FIRMWARE_RESOURCE_UPDATE_RESULT 5
+#define FIRMWARE_RESOURCE_DELIVERY_METHOD 9
 
 #define FIRMWARE_STATE_IDLE 0
 #define FIRMWARE_UPDATE_RESULT_INITIAL 0
+#define FIRMWARE_DELIVERY_METHOD_PULL_ONLY 0
 
 typedef struct
 {
@@ -47,14 +49,15 @@ static uint8_t prv_read(
 
     if (*numDataP == 0)
     {
-        *dataArrayP = lwm2m_data_new(2);
+        *dataArrayP = lwm2m_data_new(3);
 
         if (*dataArrayP == NULL)
             return COAP_500_INTERNAL_SERVER_ERROR;
 
-        *numDataP = 2;
+        *numDataP = 3;
         (*dataArrayP)[0].id = FIRMWARE_RESOURCE_STATE;
         (*dataArrayP)[1].id = FIRMWARE_RESOURCE_UPDATE_RESULT;
+        (*dataArrayP)[2].id = FIRMWARE_RESOURCE_DELIVERY_METHOD;
     }
 
     for (index = 0; index < *numDataP; index++)
@@ -74,6 +77,13 @@ static uint8_t prv_read(
         case FIRMWARE_RESOURCE_UPDATE_RESULT:
             lwm2m_data_encode_int(
                 instanceP->updateResult,
+                *dataArrayP + index
+            );
+            break;
+        
+        case FIRMWARE_RESOURCE_DELIVERY_METHOD:
+            lwm2m_data_encode_int(
+                FIRMWARE_DELIVERY_METHOD_PULL_ONLY,
                 *dataArrayP + index
             );
             break;
@@ -178,7 +188,7 @@ lwm2m_object_t *get_firmware_update_object(void)
     memset(objectP, 0, sizeof(lwm2m_object_t));
     objectP->objID = LWM2M_FIRMWARE_UPDATE_OBJECT_ID;
     objectP->versionMajor = 1;
-    objectP->versionMinor = 0;
+    objectP->versionMinor = 2;
 
     instanceP = (firmware_instance_t *)lwm2m_malloc(
         sizeof(firmware_instance_t)

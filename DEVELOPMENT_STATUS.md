@@ -1,15 +1,17 @@
 # Development Status
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 이 문서는 새 개발 세션이 현재 작업 지점부터 바로 이어갈 수 있도록 관리하는
 인수인계 문서다. 전체 시스템 구조와 장기 결정은
 [`ARCHITECTURE.md`](ARCHITECTURE.md)를 참고한다. `DESIGN.md`는 UI 디자인
 전용 문서다.
+Device Client 통합 계약은
+[`DEVICE_CLIENT_CONTRACT.md`](DEVICE_CLIENT_CONTRACT.md)를 참고한다.
 
 ## 1. 학습 및 진행 원칙
 
-- 사용자가 코드를 직접 이해하면서 진행한다.
+- 사용자가 코드를 직접 이해하고 작성하면서 진행한다.
 - 한 단계에서는 하나의 작은 책임이나 검증 가능한 흐름을 구현한다.
 - C, C++, Java, Spring, Leshan, Wakaama 개념을 이미 안다고 가정하지 않는다.
 - 포인터의 대상과 소유권, Java Bean의 생성 시점과 의존성 주입을 설명한다.
@@ -48,11 +50,16 @@ adapter로 추가한다.
 
 ### 2.3 기존 코드 처리
 
-현재 `gateway/`, `GatewayApp`, `gateway_client_context_t`,
-`ota_gateway` 이름은 기존 설계에서 남아 있다. 코드를 폐기하지 않고 **직접
-연결 BMS Device의 Linux reference LwM2M Client**로 재사용한다.
+기존 Gateway prototype은 **직접 연결 BMS Device의 Linux reference LwM2M
+Client**로 재분류했다. 2026-07-20에 기능을 보존한 채 다음 명칭 정리를
+완료했다.
 
-이름 변경은 `/5` 기본 흐름을 보존하는 상태에서 별도 단계로 수행한다. 현재
+- `gateway/` -> `clients/linux-reference/`
+- `GatewayApp` -> `ReferenceClientApp`
+- `gateway_client_context_t` -> `wakaama_client_context_t`
+- `ota_gateway*` -> `ota_linux_reference_client*`
+- 서버 `Gateway*` class와 `/api/gateways` -> `Device*`와 `/api/devices`
+
 `connectionList`는 하위 Device 목록이 아니라 LwM2M Server transport
 connection 목록이므로 그대로 필요하다.
 
@@ -78,15 +85,19 @@ connection 목록이므로 그대로 필요하다.
 - Short Server ID: `123`
 - Lifetime: `300` seconds
 - Binding: `U`
-- 현재 test endpoint: `gateway-01`
+- 현재 test endpoint: `linux-reference-01`
 
-`gateway-01`은 현재 회귀 테스트를 보존하기 위한 역사적 이름이며 제품
-identity 결정이 아니다. 이후 실제 Device serial 또는 provisioning으로 발급된
-안정적인 endpoint name으로 바꾼다.
+`linux-reference-01`은 reference client의 test identity이며 제품 identity
+결정이 아니다. 실제 Device는 serial 또는 provisioning으로 발급된 안정적인
+endpoint name을 사용한다.
 
 Wakaama는 현재 reference client 구현이다. 최종적으로 모든 MCU/Linux 장치에
 동일 SDK를 강제하지 않는다. 표준 호환성, `/5` 완성도, 자원 사용량, 보안,
 라이선스를 기준으로 platform별 Client를 선택할 수 있다.
+
+현재 산출물은 POSIX Linux용 reference implementation이며 STM32 제품용 SDK나
+배포 binary가 아니다. 플랫폼과 장치 개발자의 책임 경계는
+`ARCHITECTURE.md` 5.4절을 따른다.
 
 ### Persistence and artifacts
 
@@ -107,22 +118,23 @@ ota_project/
 ├── experiments/
 │   ├── leshan-demo/
 │   └── wakaama/
-├── gateway/                         # historical name; reference Device Client
-│   ├── CMakeLists.txt
-│   ├── include/
-│   │   ├── gateway_app.hpp
-│   │   ├── object_bms.h
-│   │   ├── object_firmware.h
-│   │   ├── standard_objects.h
-│   │   └── wakaama_hooks.h
-│   ├── src/
-│   │   ├── main.cpp
-│   │   ├── gateway_app.cpp
-│   │   ├── object_bms.c
-│   │   ├── object_firmware.c
-│   │   └── wakaama_hooks.c
-│   └── tests/
-│       └── gateway_smoke.cpp
+├── clients/
+│   └── linux-reference/             # direct LwM2M reference client
+│       ├── CMakeLists.txt
+│       ├── include/
+│       │   ├── reference_client_app.hpp
+│       │   ├── object_bms.h
+│       │   ├── object_firmware.h
+│       │   ├── standard_objects.h
+│       │   └── wakaama_hooks.h
+│       ├── src/
+│       │   ├── main.cpp
+│       │   ├── reference_client_app.cpp
+│       │   ├── object_bms.c
+│       │   ├── object_firmware.c
+│       │   └── wakaama_hooks.c
+│       └── tests/
+│           └── reference_client_smoke.cpp
 └── server/
     ├── pom.xml
     ├── compose.yaml                  # PostgreSQL development draft
@@ -130,8 +142,8 @@ ota_project/
         ├── java/ota/platform/server/
         │   ├── OtaServerApplication.java
         │   ├── config/LeshanServerConfiguration.java
-        │   ├── listener/GatewayRegistrationListener.java
-        │   ├── controller/GatewayController.java
+        │   ├── listener/DeviceRegistrationListener.java
+        │   ├── controller/DeviceController.java
         │   └── telemetry/
         │       ├── BmsTelemetry.java
         │       └── BmsTelemetryStore.java
@@ -140,17 +152,15 @@ ota_project/
             └── models/bms.xml
 ```
 
-## 5. Reference Device Client 구현 완료
+## 5. Linux Reference Client Foundation 구현 완료
 
 ### 5.1 Build와 target
 
 - C99와 C++20을 함께 사용하는 CMake project
 - Wakaama를 subdirectory로 포함
-- `ota_gateway_objects` static library
-- `ota_gateway` reference client executable
-- `ota_gateway_smoke` integration/smoke executable
-
-Target 이름은 아직 historical name을 유지한다.
+- `ota_linux_reference_client_objects` static library
+- `ota_linux_reference_client` reference client executable
+- `ota_linux_reference_client_smoke` integration/smoke executable
 
 ### 5.2 LwM2M Objects
 
@@ -166,7 +176,7 @@ Target 이름은 아직 historical name을 유지한다.
 
 ### 5.3 Transport와 lifecycle
 
-`GatewayApp`의 현재 동작:
+`ReferenceClientApp`의 현재 동작:
 
 1. UDP socket 생성
 2. `/0`, `/1`, `/3`, `/5`, `/33000` Object 생성
@@ -190,6 +200,10 @@ Object pointer, Wakaama context, connection list, socket의 생성 실패 및 �
 - `/33000/0/0` Read
 - SIGINT 정상 종료와 Deregistration
 
+2026-07-20 명칭 변경 회귀 검증에서 새 CMake target build와 smoke test,
+`linux-reference-01` Registration/READY, `/api/devices/{endpoint}/bms/voltage`
+HTTP `200`, 정상 Deregistration를 다시 확인했다.
+
 Leshan Demo에는 `/33000` model이 없어 raw OPAQUE
 `414b3333`으로 보였고, 제품 embedded Leshan은 `bms.xml`을 로드해 Float로
 decode하는 것을 확인했다.
@@ -210,7 +224,7 @@ Configuration, Listener, Controller, Store를 생성한다. Constructor paramete
 
 ### 6.2 Registration events
 
-`GatewayRegistrationListener`가 다음 event를 logging한다.
+`DeviceRegistrationListener`가 다음 event를 logging한다.
 
 - registered
 - updated
@@ -223,8 +237,8 @@ Configuration, Listener, Controller, Store를 생성한다. Constructor paramete
 현재 API:
 
 ```text
-GET /api/gateways/{endpoint}/bms/voltage
-GET /api/gateways/{endpoint}/bms/voltage/latest
+GET /api/devices/{endpoint}/bms/voltage
+GET /api/devices/{endpoint}/bms/voltage/latest
 ```
 
 첫 API는 Leshan으로 `ReadRequest(33000, 0, 0)`을 보내고, Float 응답을
@@ -239,8 +253,7 @@ latest 응답을 확인했다.
 
 ## 7. 현재 한계와 기술 부채
 
-- `Gateway*` class, API, target 이름이 새 Device 중심 구조와 맞지 않음
-- test endpoint가 아직 `gateway-01`
+- server URI, port, test endpoint가 아직 reference client code에 고정됨
 - `/5`는 State/Result Read wiring뿐이며 Package/URI/Execute는 아직 미구현
 - 실제 firmware download, hash/signature 검증, install, reboot, rollback 없음
 - NoSec만 사용
@@ -290,7 +303,21 @@ Reference client의 Object 배열에 `/5`를 추가하고 Leshan과 protocol wir
 이 단계에서는 실제 firmware를 설치하지 않는다. 예제 상태값과 전이가 표준과
 맞는지도 별도로 확인한 뒤 product-owned update backend를 연결한다.
 
-### 8.3 바로 다음 작은 단계
+현재 구현은 `/5` version `1.0`을 광고한다.
+계약 목표인 version `1.2`의 Resource와 상태 전이는 아직 구현되지 않았다.
+
+### 8.3 바로 다음 작은 단계: `/5` v1.2 기반 정리
+
+Server와 reference client가 같은 Firmware Update Object v1.2 model을 사용하도록 맞춘다.
+
+1. OMA Firmware Update Object v1.2 DDF를 Server model에 추가
+2. reference client가 `/5` version `1.2`를 광고
+3. Delivery Method `/5/0/9`를 Pull only (`0`)로 Read
+4. Protocol Support `/5/0/8`을 현재 지원 protocol에 맞게 Read
+5. smoke test에서 version과 두 Resource 검증
+6. Leshan Registration과 Resource Read 확인
+
+### 8.4 그 다음 작은 단계: Firmware Status API
 
 Spring 서버에 최소 firmware status Read API를 추가한다.
 
@@ -300,7 +327,7 @@ Spring 서버에 최소 firmware status Read API를 추가한다.
 4. 두 값을 하나의 HTTP JSON 응답으로 반환
 5. 실제 reference client를 등록해 curl로 확인
 
-### 8.4 그 다음 vertical slice
+### 8.5 그 다음 vertical slice
 
 1. Linux 임시 파일에 firmware stream 저장
 2. 예상 SHA-256과 실제 파일 hash 비교
@@ -315,26 +342,27 @@ A/B boot, boot confirmation, rollback callback을 연결한다.
 
 ## 9. 이후 작업 순서
 
-1. Milestone 3 direct `/5` OTA vertical slice
-2. `Gateway*` 명칭을 `Device*`로 작은 단위 rename
-3. Device endpoint와 credential provisioning
-4. PostgreSQL schema와 migration
-5. firmware artifact metadata와 Object Storage adapter
-6. 범용 telemetry ingestion 및 Observe/Notify
-7. Device Profile과 동적 Object model registry
-8. OTA Campaign, 여러 Device 동시성, staged rollout
-9. Admin UI
-10. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
+1. Firmware Update `/5` v1.2 model과 reference client wiring
+2. Firmware Status Read API
+3. Milestone 3 direct `/5` OTA vertical slice
+4. Device endpoint와 credential provisioning
+5. PostgreSQL schema와 migration
+6. firmware artifact metadata와 Object Storage adapter
+7. 범용 telemetry ingestion 및 Observe/Notify
+8. Device Profile과 동적 Object model registry
+9. OTA Campaign, 여러 Device 동시성, staged rollout
+10. Admin UI
+11. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
 
 ## 10. Build와 실행
 
 ### Reference Device Client
 
 ```bash
-cmake -S gateway -B /tmp/ota-gateway-build
-cmake --build /tmp/ota-gateway-build --target ota_gateway
-cmake --build /tmp/ota-gateway-build --target ota_gateway_smoke
-/tmp/ota-gateway-build/ota_gateway
+cmake -S clients/linux-reference -B /tmp/ota-linux-reference-client-build
+cmake --build /tmp/ota-linux-reference-client-build --target ota_linux_reference_client
+cmake --build /tmp/ota-linux-reference-client-build --target ota_linux_reference_client_smoke
+/tmp/ota-linux-reference-client-build/ota_linux_reference_client
 ```
 
 ### Embedded Server
@@ -350,7 +378,7 @@ mvn spring-boot:run
 
 ## 11. 현재 회귀 검증 기준
 
-- `ota_gateway`와 `ota_gateway_smoke` build
+- `ota_linux_reference_client`와 `ota_linux_reference_client_smoke` build
 - Spring server package build
 - UDP `5683` listen
 - reference Device의 Registration과 READY 전환
@@ -373,15 +401,21 @@ Embedded Leshan을 통한 두 Resource Read는 다음 단계에 추가한다.
 
 - `ARCHITECTURE.md`
 - `DEVELOPMENT_STATUS.md`
-- `gateway/include/gateway_app.hpp`
-- `gateway/src/gateway_app.cpp`
-- `gateway/include/object_firmware.h`
-- `gateway/src/object_firmware.c`
-- `gateway/include/standard_objects.h`
-- `gateway/CMakeLists.txt`
+- `DEVICE_CLIENT_CONTRACT.md`
+- `clients/linux-reference/include/reference_client_app.hpp`
+- `clients/linux-reference/src/reference_client_app.cpp`
+- `clients/linux-reference/include/object_firmware.h`
+- `clients/linux-reference/src/object_firmware.c`
+- `clients/linux-reference/include/standard_objects.h`
+- `clients/linux-reference/CMakeLists.txt`
 - `experiments/wakaama/examples/client/common/object_firmware.c`
 - `server/src/main/java/ota/platform/server/config/LeshanServerConfiguration.java`
 
 Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현하지
-않는다. 다음에는 8.3절의 firmware status Read API부터 이어간다. `/25` 또는
-Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.
+않는다. `DEVICE_CLIENT_CONTRACT.md`를 Device Client 개발과 인수의 기준으로
+사용한다.
+
+다음에는 8.3절의 Firmware Update `/5` v1.2 model과 reference client wiring부터
+진행한다. DDF, Object version, Resource `/9`, Resource `/8` 순서로 하나씩
+구현하고 매 단계에서 사용자가 코드를 직접 이해하고 작성한 뒤 검증한다.
+`/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

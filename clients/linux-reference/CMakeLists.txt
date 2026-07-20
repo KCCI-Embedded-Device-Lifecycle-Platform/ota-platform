@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ota_gateway LANGUAGES C CXX)
+project(ota_linux_reference_client LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -20,19 +20,19 @@ set(WAKAAMA_PLATFORM POSIX)
 set(WAKAAMA_CLI ON)
 
 add_subdirectory(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../experiments/wakaama
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../experiments/wakaama
     ${CMAKE_CURRENT_BINARY_DIR}/wakaama
 )
 
 set(
     WAKAAMA_CLIENT_COMMON_DIR
-    ${CMAKE_CURRENT_SOURCE_DIR}/../experiments/wakaama/examples/client/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../experiments/wakaama/examples/client/common
 )
 
-add_library(ota_gateway_objects STATIC)
+add_library(ota_linux_reference_client_objects STATIC)
 
 target_sources(
-    ota_gateway_objects
+    ota_linux_reference_client_objects
     PRIVATE
         src/object_bms.c
         include/object_bms.h
@@ -45,41 +45,41 @@ target_sources(
 )
 
 target_include_directories(
-    ota_gateway_objects
+    ota_linux_reference_client_objects
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(
-    ota_gateway_objects
+    ota_linux_reference_client_objects
     PUBLIC
         wakaama_static
 )
 
 add_executable(
-    ota_gateway_smoke
-    tests/gateway_smoke.cpp
+    ota_linux_reference_client_smoke
+    tests/reference_client_smoke.cpp
     src/wakaama_hooks.c
     include/wakaama_hooks.h
 )
 
 target_link_libraries(
-    ota_gateway_smoke
+    ota_linux_reference_client_smoke
     PRIVATE
-        ota_gateway_objects
+        ota_linux_reference_client_objects
 )
 
 add_executable(
-    ota_gateway
+    ota_linux_reference_client
     src/main.cpp
-    src/gateway_app.cpp
+    src/reference_client_app.cpp
     src/wakaama_hooks.c
-    include/gateway_app.hpp
+    include/reference_client_app.hpp
     include/wakaama_hooks.h
 )
 
 target_link_libraries(
-    ota_gateway
+    ota_linux_reference_client
     PRIVATE
-        ota_gateway_objects
+        ota_linux_reference_client_objects
 )

@@ -20,13 +20,13 @@ import java.util.Optional;
 import ota.platform.server.telemetry.BmsTelemetryStore;
 
 @RestController
-@RequestMapping("/api/gateways")
-public class GatewayController {
+@RequestMapping("/api/devices")
+public class DeviceController {
 
     private final LeshanServer leshanServer;
     private final BmsTelemetryStore telemetryStore;
 
-    public GatewayController(LeshanServer leshanServer, BmsTelemetryStore telemetryStore) {
+    public DeviceController(LeshanServer leshanServer, BmsTelemetryStore telemetryStore) {
         this.leshanServer = leshanServer;
         this.telemetryStore = telemetryStore;
     }

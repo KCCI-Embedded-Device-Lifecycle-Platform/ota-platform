@@ -1,16 +1,16 @@
-#ifndef OTA_GATEWAY_APP_HPP
-#define OTA_GATEWAY_APP_HPP
+#ifndef OTA_LINUX_REFERENCE_CLIENT_APP_HPP
+#define OTA_LINUX_REFERENCE_CLIENT_APP_HPP
 
 #include "wakaama_hooks.h"
 
 #include <array>
 #include <cstddef>
 
-class GatewayApp
+class ReferenceClientApp
 {
 public:
-    GatewayApp();
-    ~GatewayApp();
+    ReferenceClientApp();
+    ~ReferenceClientApp();
 
     bool initialize();
     int run();
@@ -26,7 +26,7 @@ private:
     static constexpr std::size_t BmsObjectIndex = 4;
     static constexpr std::size_t objectCount = 5;
 
-    gateway_client_context_t clientContext;
+    wakaama_client_context_t clientContext;
     lwm2m_context_t *lwm2mContextP;
     std::array<lwm2m_object_t *, objectCount> objects;
 };

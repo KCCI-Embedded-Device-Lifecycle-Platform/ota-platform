@@ -11,10 +11,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-public class GatewayRegistrationListener implements RegistrationListener {
+public class DeviceRegistrationListener implements RegistrationListener {
     
     private static final Logger logger =
-            LoggerFactory.getLogger(GatewayRegistrationListener.class);
+            LoggerFactory.getLogger(DeviceRegistrationListener.class);
 
     @Override
     public void registered(

@@ -1,6 +1,8 @@
 #include "object_bms.h"
 #include <string.h>
 
+/* Example telemetry object for the Linux reference client. */
+
 #define BMS_OBJECT_ID 33000
 #define BMS_RESOURCE_VOLTAGE 0
 

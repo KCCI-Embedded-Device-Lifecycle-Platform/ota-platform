@@ -1,12 +1,14 @@
 # Software Architecture
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ## 1. 문서 목적
 
 이 문서는 Firmware OTA Platform의 제품 구조와 구성요소의 책임을 정의한다.
 현재 구현 진척도와 바로 다음 작업은 `DEVELOPMENT_STATUS.md`에서 관리한다.
 `DESIGN.md`는 UI 디자인 전용 문서다.
+Device Client 통합 계약과 플랫폼/장치 개발자의 상세 책임은
+[`DEVICE_CLIENT_CONTRACT.md`](DEVICE_CLIENT_CONTRACT.md)에서 정의한다.
 
 문서에서 사용하는 상태는 다음과 같다.
 
@@ -117,9 +119,9 @@ Gateway Object Instance와 별도의 `deviceId`를 연결하는 계층은 기본
 - 읽은 BMS voltage를 process memory에 endpoint별 최신값으로 보관
 - HTTP API로 현재 Read와 최신값 조회
 
-현재 class와 API의 `Gateway` 명칭은 이전 설계에서 남은 이름이다. 동작을 먼저
-보존하면서 이후 `DeviceRegistrationListener`, `DeviceController`,
-`/api/devices`로 변경한다.
+서버의 장치 중심 이름은 `DeviceRegistrationListener`, `DeviceController`,
+`/api/devices`를 사용한다. HTTP `502 Bad Gateway` 상태 이름은 장치 Gateway
+도메인과 무관한 표준 HTTP 용어다.
 
 목표 책임:
 
@@ -147,17 +149,20 @@ Leshan은 Spring Boot 애플리케이션 내부 library다. 별도 Demo Server�
 - 다른 MCU/Linux 제품: 자원, 보안, 라이선스, `/5` 완성도에 맞는 conforming
   Client 선택
 
-현재 저장소의 `gateway/`, `GatewayApp`, `ota_gateway` 명칭은 역사적인
-이름이다. 이 코드는 하위 장치를 관리하는 Gateway가 아니라, BMS 장치 하나를
-표현하는 직접 연결 Linux reference client로 재분류한다. 기능 검증을 보존한
-뒤 작은 단계로 `device-client` 계열 이름으로 변경한다.
+현재 저장소의 `clients/linux-reference/`는 BMS 장치 하나를 표현하는 직접 연결
+Linux reference client다. 서버 상호운용과 protocol lifecycle 검증을 위한
+reference implementation이며, 범용 MCU SDK나 STM32 배포 binary가 아니다.
+
+제품 목표 Profile은 LwM2M `1.1`과 Firmware Update Object `/5` version `1.2`다.
+현재 Linux reference client는 `/5` version `1.0` Read scaffold이므로 v1.2로
+확장해야 한다.
 
 ### 5.2 현재 reference client
 
 ```text
 main.cpp
-  -> GatewayApp                     historical name
-       -> gateway_client_context_t  historical name
+  -> ReferenceClientApp
+       -> wakaama_client_context_t
        -> Wakaama context
        -> LwM2M Object array
        -> UDP socket and server connections
@@ -168,7 +173,7 @@ object_bms.c
 wakaama_hooks.c
   -> Wakaama POSIX UDP platform adapter
 
-gateway_smoke.cpp
+reference_client_smoke.cpp
   -> integration and resource-lifetime checks
 ```
 
@@ -183,19 +188,19 @@ gateway_smoke.cpp
 | BMS | `/33000` | reference BMS telemetry | 현재 |
 
 현재 BMS Object는 `/33000/0/0`에서 voltage `12.7`을 Float로 읽는다.
-`/33000`은 특정 Gateway의 하위 장치가 아니라 이 LwM2M endpoint 자체가
+`/33000`은 하위 장치를 대신 표현하는 Object가 아니라 이 LwM2M endpoint 자체가
 제공하는 custom Object다.
 
 ### 5.3 자원 소유권과 event loop
 
-현재 `GatewayApp`은 다음 C 자원의 RAII 경계다.
+현재 `ReferenceClientApp`은 다음 C 자원의 RAII 경계다.
 
 | 자원 | 현재 소유자 | 정리 방식 |
 |---|---|---|
-| UDP socket fd | `GatewayApp` | `close()` |
-| `lwm2m_context_t *` | `GatewayApp` | `lwm2m_close()` |
-| LwM2M Object 포인터 | `GatewayApp` | Object별 cleanup 함수 |
-| Server connection list | client context를 통한 `GatewayApp` | Wakaama close hook/free |
+| UDP socket fd | `ReferenceClientApp` | `close()` |
+| `lwm2m_context_t *` | `ReferenceClientApp` | `lwm2m_close()` |
+| LwM2M Object 포인터 | `ReferenceClientApp` | Object별 cleanup 함수 |
+| Server connection list | client context를 통한 `ReferenceClientApp` | Wakaama close hook/free |
 | `securityObjectP` | 소유하지 않는 alias | Object 배열의 `/0`을 참조 |
 
 `connectionList`는 하위 Device 목록이 아니라 이 Client가 연결한 LwM2M Server
@@ -214,6 +219,25 @@ lwm2m_step()
 
 Registration, READY 전환, Read 요청 처리, signal 기반 종료와 Deregistration가
 검증됐다.
+
+### 5.4 Device Client 배포 및 책임 경계
+
+플랫폼은 특정 STM32 제품의 완성 firmware를 범용 산출물로 제공하지 않는다.
+대신 장치 개발자가 제품 firmware에 통합할 수 있는 Device Integration Kit를
+제공한다.
+
+| 플랫폼이 제공할 책임 | 장치 개발자가 제공할 책임 |
+|---|---|
+| 지원 LwM2M/Object version과 Resource 계약 | 대상 MCU, RTOS, network stack에 Client 통합 |
+| endpoint/credential provisioning 규격 | credential의 안전한 저장과 device identity 연결 |
+| `/3`, `/5`, custom telemetry model | 실제 장치 정보와 sensor/actuator callback 연결 |
+| `/5` 상태 전이와 Update Result mapping | firmware의 flash 저장, hash/signature 검증 |
+| update backend callback 경계와 Linux reference | bootloader, A/B slot, reboot, confirmation, rollback |
+| Leshan 상호운용 및 실패 시나리오 test | 실제 제품 firmware build와 hardware 검증 |
+
+지원할 STM32 조합은 MCU family만으로 정의하지 않는다. RTOS, network stack,
+LwM2M engine, bootloader, flash layout을 하나의 지원 profile로 확정한 뒤 해당
+profile용 source component와 sample, 설정 규격, test를 배포한다.
 
 ## 6. Device onboarding과 Object model
 
@@ -340,7 +364,7 @@ S3-compatible storage로 교체한다. CDN은 장치 수와 지역이 늘어날 
 
 ### Milestone 1: Direct LwM2M Client Foundation
 
-상태: **완료, 기존 Gateway prototype을 재분류**
+상태: **완료, Linux reference client foundation으로 정리**
 
 - Wakaama Client 초기화와 Object 수명 관리
 - Leshan Registration과 READY 전환

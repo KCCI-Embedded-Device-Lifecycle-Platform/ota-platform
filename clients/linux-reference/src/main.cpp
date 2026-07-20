@@ -1,14 +1,14 @@
-#include "gateway_app.hpp"
+#include "reference_client_app.hpp"
 #include <iostream>
 using namespace std;
 
 int main()
 {
-    GatewayApp app;
+    ReferenceClientApp app;
 
     if(!app.initialize())
     {
-        cerr << "Failed to initialize gateway\n";
+        cerr << "Failed to initialize Linux reference client\n";
         return 1;
     }
 

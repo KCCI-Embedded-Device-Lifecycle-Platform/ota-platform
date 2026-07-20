@@ -1,4 +1,4 @@
-#include "gateway_app.hpp"
+#include "reference_client_app.hpp"
 #include "object_bms.h"
 #include "object_firmware.h"
 #include "standard_objects.h"
@@ -22,7 +22,7 @@ namespace
     }
 }
 
-GatewayApp::GatewayApp() : clientContext{}, lwm2mContextP{nullptr}, objects{}
+ReferenceClientApp::ReferenceClientApp() : clientContext{}, lwm2mContextP{nullptr}, objects{}
 {
     clientContext.securityObjectP = nullptr;
     clientContext.socketFd = -1;
@@ -32,7 +32,7 @@ GatewayApp::GatewayApp() : clientContext{}, lwm2mContextP{nullptr}, objects{}
     clientContext.serverPort = "5683";
 }
 
-GatewayApp::~GatewayApp()
+ReferenceClientApp::~ReferenceClientApp()
 {
     if (lwm2mContextP != nullptr)
     {
@@ -55,7 +55,7 @@ GatewayApp::~GatewayApp()
     }
 }
 
-bool GatewayApp::createClientObjects()
+bool ReferenceClientApp::createClientObjects()
 {
     constexpr int serverId = 123;
     constexpr int lifetime = 300;
@@ -84,7 +84,7 @@ bool GatewayApp::createClientObjects()
     return true;
 }
 
-void GatewayApp::destroyClientObjects()
+void ReferenceClientApp::destroyClientObjects()
 {
     clientContext.securityObjectP = nullptr;
 
@@ -121,7 +121,7 @@ void GatewayApp::destroyClientObjects()
     }
 }
 
-bool GatewayApp::initialize()
+bool ReferenceClientApp::initialize()
 {
     constexpr const char *clientPort = "56830";
 
@@ -149,7 +149,7 @@ bool GatewayApp::initialize()
     }
     cout << "Wakaama context initialized\n";
 
-    constexpr const char *endpointName = "gateway-01";
+    constexpr const char *endpointName = "linux-reference-01";
 
     int configureResult = lwm2m_configure(
         lwm2mContextP,
@@ -175,7 +175,7 @@ bool GatewayApp::initialize()
     return true;
 }
 
-int GatewayApp::run()
+int ReferenceClientApp::run()
 {
     if (lwm2mContextP == nullptr)
     {
@@ -309,7 +309,7 @@ int GatewayApp::run()
         );
     }
 
-    cout << "Gateway shutdown requested\n";
+    cout << "Reference client shutdown requested\n";
 
     return 0;
 }

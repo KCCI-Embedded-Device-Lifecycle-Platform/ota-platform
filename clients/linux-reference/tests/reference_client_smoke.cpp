@@ -81,6 +81,8 @@ static bool testFirmwareObject()
 
     int64_t state = -1;
     int64_t updateResult = -1;
+    int64_t deliveryMethod = -1;
+    int64_t protocolSupport = -1;
     lwm2m_data_t packageData{};
     packageData.id = 0;
 
@@ -104,15 +106,30 @@ static bool testFirmwareObject()
 
     bool validObject =
         firmwareObjectP->objID == LWM2M_FIRMWARE_UPDATE_OBJECT_ID &&
+        firmwareObjectP->versionMajor == 1 &&
+        firmwareObjectP->versionMinor == 2 &&
         readResult == COAP_205_CONTENT &&
-        numData == 2 &&
+        numData == 4 &&
         dataArrayP != nullptr &&
         dataArrayP[0].id == 3 &&
         dataArrayP[1].id == 5 &&
+        dataArrayP[2].id == 8 &&
+        dataArrayP[3].id == 9 &&
+        dataArrayP[2].type == LWM2M_TYPE_MULTIPLE_RESOURCE &&
+        dataArrayP[2].value.asChildren.count == 1 &&
+        dataArrayP[2].value.asChildren.array != nullptr &&
+        dataArrayP[2].value.asChildren.array[0].id == 0 &&
         lwm2m_data_decode_int(&dataArrayP[0], &state) != 0 &&
         lwm2m_data_decode_int(&dataArrayP[1], &updateResult) != 0 &&
+        lwm2m_data_decode_int(
+            &dataArrayP[2].value.asChildren.array[0],
+            &protocolSupport
+        ) != 0 &&
+        lwm2m_data_decode_int(&dataArrayP[3], &deliveryMethod) != 0 &&
         state == 0 &&
         updateResult == 0 &&
+        protocolSupport == 0 &&
+        deliveryMethod == 0 &&
         packageWriteResult == COAP_501_NOT_IMPLEMENTED &&
         updateExecuteResult == COAP_501_NOT_IMPLEMENTED;
 
@@ -127,7 +144,7 @@ static bool testFirmwareObject()
 static bool testConnectionClose()
 {
 
-    gateway_client_context_t context {};
+    wakaama_client_context_t context {};
 
     lwm2m_connection_t *firstP =
         static_cast<lwm2m_connection_t *>(lwm2m_malloc(sizeof(lwm2m_connection_t)));
@@ -236,7 +253,7 @@ int main()
     }
     cout << "Firmware Update object test passed\n";
 
-    gateway_client_context_t clientContext{};
+    wakaama_client_context_t clientContext{};
 
     clientContext.securityObjectP = nullptr;
     clientContext.socketFd = -1;
@@ -327,7 +344,7 @@ int main()
     clientContext.securityObjectP = objects[SECURITY_OBJECT_INDEX];
     lwm2m_object_t *bmsObjectP = objects[BMS_OBJECT_INDEX];
 
-    constexpr const char *endpointName = "gateway-01";
+    constexpr const char *endpointName = "linux-reference-01";
 
     int configureResult = lwm2m_configure(
         lwm2mContextP,

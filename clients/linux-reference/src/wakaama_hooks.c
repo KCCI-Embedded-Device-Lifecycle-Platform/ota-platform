@@ -3,10 +3,10 @@ int g_reboot = 0;
 
 void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
 {
-    gateway_client_context_t *contextP;
+    wakaama_client_context_t *contextP;
     lwm2m_connection_t *connectionP;
 
-    contextP = (gateway_client_context_t *)userData;
+    contextP = (wakaama_client_context_t *)userData;
 
     (void)securityInstanceId;
 
@@ -37,11 +37,11 @@ void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
 
 void lwm2m_close_connection(void *sessionH, void *userData)
 {
-    gateway_client_context_t *contextP;
+    wakaama_client_context_t *contextP;
     lwm2m_connection_t *targetP;
     lwm2m_connection_t *parentP;
 
-    contextP = (gateway_client_context_t *)userData;
+    contextP = (wakaama_client_context_t *)userData;
     targetP = (lwm2m_connection_t *)sessionH;
 
     if (contextP == NULL || targetP == NULL)

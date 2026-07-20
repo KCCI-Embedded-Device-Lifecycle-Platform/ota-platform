@@ -1,6 +1,6 @@
 package ota.platform.server.config;
 
-import ota.platform.server.listener.GatewayRegistrationListener;
+import ota.platform.server.listener.DeviceRegistrationListener;
 import org.eclipse.leshan.server.LeshanServer;
 import org.eclipse.leshan.server.LeshanServerBuilder;
 import org.eclipse.leshan.transport.californium.server.endpoint.CaliforniumServerEndpointsProvider;
@@ -16,13 +16,13 @@ import org.eclipse.leshan.server.model.StaticModelProvider;
 @Configuration
 public class LeshanServerConfiguration {
     @Bean(initMethod = "start", destroyMethod = "destroy")
-    public LeshanServer leshanServer(GatewayRegistrationListener registrationListener) throws Exception {
+    public LeshanServer leshanServer(DeviceRegistrationListener registrationListener) throws Exception {
         List<ObjectModel> models = ObjectLoader.loadDefault();
 
         models.addAll(
             ObjectLoader.loadDdfResources(
                 "/models/",
-                new String[] {"bms.xml"},
+                new String[] {"bms.xml", "firmware-update-v1_2.xml"},
                 true));
         
         //default:5683

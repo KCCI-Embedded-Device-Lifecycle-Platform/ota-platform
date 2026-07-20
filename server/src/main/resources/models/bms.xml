@@ -5,7 +5,7 @@
         <Name>BMS</Name>
 
         <Description1>
-            Battery Management System telemetry exposed by the OTA Gateway.
+            Battery Management System telemetry exposed by the LwM2M device.
         </Description1>
 
         <ObjectID>33000</ObjectID>
@@ -24,7 +24,7 @@
                 <RangeEnumeration></RangeEnumeration>
                 <Units>V</Units>
                 <Description>
-                    Current battery voltage measured by the gateway.
+                    Current battery voltage measured by the device.
                 </Description>
             </Item>
         </Resources>
