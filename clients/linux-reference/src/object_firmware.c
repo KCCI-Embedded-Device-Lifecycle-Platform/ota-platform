@@ -14,7 +14,10 @@
 #define FIRMWARE_RESOURCE_UPDATE 2
 #define FIRMWARE_RESOURCE_STATE 3
 #define FIRMWARE_RESOURCE_UPDATE_RESULT 5
+#define FIRMWARE_RESOURCE_PROTOCOL_SUPPORT 8
 #define FIRMWARE_RESOURCE_DELIVERY_METHOD 9
+#define FIRMWARE_PROTOCOL_COAP_INSTANCE_ID 0
+#define FIRMWARE_PROTOCOL_COAP 0
 
 #define FIRMWARE_STATE_IDLE 0
 #define FIRMWARE_UPDATE_RESULT_INITIAL 0
@@ -26,6 +29,37 @@ typedef struct
     int64_t state;
     int64_t updateResult;
 } firmware_instance_t;
+
+static uint8_t prv_read_protocol_support(lwm2m_data_t *dataP)
+{
+    lwm2m_data_t *protocolP;
+
+    if(dataP->type == LWM2M_TYPE_MULTIPLE_RESOURCE)
+    {
+        if(dataP->value.asChildren.count != 1||
+           dataP->value.asChildren.array == NULL ||
+           dataP->value.asChildren.array[0].id !=
+            FIRMWARE_PROTOCOL_COAP_INSTANCE_ID)
+        {
+            return COAP_404_NOT_FOUND;
+        }
+        protocolP = dataP->value.asChildren.array;
+    }
+    else
+    {
+        protocolP = lwm2m_data_new(1);
+        
+        if(protocolP == NULL)
+            return COAP_500_INTERNAL_SERVER_ERROR;
+        
+        protocolP[0].id = FIRMWARE_PROTOCOL_COAP_INSTANCE_ID;
+        lwm2m_data_encode_instances(protocolP, 1, dataP);
+    }
+
+    lwm2m_data_encode_int(FIRMWARE_PROTOCOL_COAP, protocolP);
+
+    return COAP_205_CONTENT;
+}
 
 static uint8_t prv_read(
     lwm2m_context_t *contextP,
@@ -49,20 +83,22 @@ static uint8_t prv_read(
 
     if (*numDataP == 0)
     {
-        *dataArrayP = lwm2m_data_new(3);
+        *dataArrayP = lwm2m_data_new(4);
 
         if (*dataArrayP == NULL)
             return COAP_500_INTERNAL_SERVER_ERROR;
 
-        *numDataP = 3;
+        *numDataP = 4;
         (*dataArrayP)[0].id = FIRMWARE_RESOURCE_STATE;
         (*dataArrayP)[1].id = FIRMWARE_RESOURCE_UPDATE_RESULT;
-        (*dataArrayP)[2].id = FIRMWARE_RESOURCE_DELIVERY_METHOD;
+        (*dataArrayP)[2].id = FIRMWARE_RESOURCE_PROTOCOL_SUPPORT;
+        (*dataArrayP)[3].id = FIRMWARE_RESOURCE_DELIVERY_METHOD;
     }
 
     for (index = 0; index < *numDataP; index++)
     {
-        if ((*dataArrayP)[index].type == LWM2M_TYPE_MULTIPLE_RESOURCE)
+        if ((*dataArrayP)[index].type == LWM2M_TYPE_MULTIPLE_RESOURCE &&
+            (*dataArrayP)[index].id != FIRMWARE_RESOURCE_PROTOCOL_SUPPORT)
             return COAP_404_NOT_FOUND;
 
         switch ((*dataArrayP)[index].id)
@@ -87,6 +123,15 @@ static uint8_t prv_read(
                 *dataArrayP + index
             );
             break;
+        
+        case FIRMWARE_RESOURCE_PROTOCOL_SUPPORT:
+        {
+            uint8_t result = prv_read_protocol_support(*dataArrayP + index);
+
+            if (result != COAP_205_CONTENT)
+                return result;
+            break;
+        }
 
         case FIRMWARE_RESOURCE_PACKAGE:
         case FIRMWARE_RESOURCE_PACKAGE_URI:
