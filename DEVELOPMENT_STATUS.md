@@ -288,44 +288,60 @@ OTA가 구현됐다고 간주하면 안 된다.
 
 ### 8.2 Object wiring 완료 상태
 
-Reference client의 Object 배열에 `/5`를 추가하고 Leshan과 protocol wiring만
-먼저 검증하는 단계다.
+Reference client와 Server의 Firmware Update Object `/5` v1.2 protocol
+wiring을 완료했다.
 
-- Firmware Object의 public factory/cleanup 선언 완료
-- CMake target에 project-owned `object_firmware.c` 연결 완료
-- Object 배열을 4개에서 5개로 확장
-- 생성 실패와 cleanup 경로에 `/5` 포함
-- State `Idle(0)`, Update Result `Initial(0)` local Read smoke 검증
-- Package Write와 Update Execute가 `5.01 Not Implemented`인지 검증
-- Registration link-format의 `</5>;ver=1.0,</5/0>` 확인
-- Embedded Leshan의 실제 State/Result Read는 아직 확인하지 않음
+- Firmware Object factory/cleanup과 CMake 연결
+- Object 배열과 실패/cleanup 경로에 `/5` 포함
+- `/5` version `1.2` 광고
+- State `Idle(0)`, Update Result `Initial(0)` local Read
+- Protocol Support `/5/0/8`: CoAP (`0`) local Read
+- Delivery Method `/5/0/9`: Pull only (`0`) local Read
+- Package Write와 Update Execute: `5.01 Not Implemented`
+- `/5` v1.2 Resource와 version smoke 검증
+- Server에 OMA 공식 Firmware Update Object v1.2 DDF 추가
 
-이 단계에서는 실제 firmware를 설치하지 않는다. 예제 상태값과 전이가 표준과
-맞는지도 별도로 확인한 뒤 product-owned update backend를 연결한다.
+실제 firmware download, 검증, 설치 기능은 아직 구현하지 않았다.
 
-현재 구현은 `/5` version `1.0`을 광고한다.
-계약 목표인 version `1.2`의 Resource와 상태 전이는 아직 구현되지 않았다.
+### 8.3 `/5` v1.2 기반 정리 완료
 
-### 8.3 바로 다음 작은 단계: `/5` v1.2 기반 정리
+Reference client의 Registration에서 `</5>;ver=1.2,</5/0>`을 확인했다.
+Embedded Leshan이 `/5/0/8`과 `/5/0/9`를 실제로 Read하고 다음 capability
+API가 HTTP `200`을 반환하는 것을 확인했다.
 
-Server와 reference client가 같은 Firmware Update Object v1.2 model을 사용하도록 맞춘다.
+```text
+GET /api/devices/{endpoint}/firmware/capabilities
+```
 
-1. OMA Firmware Update Object v1.2 DDF를 Server model에 추가
-2. reference client가 `/5` version `1.2`를 광고
-3. Delivery Method `/5/0/9`를 Pull only (`0`)로 Read
-4. Protocol Support `/5/0/8`을 현재 지원 protocol에 맞게 Read
-5. smoke test에서 version과 두 Resource 검증
-6. Leshan Registration과 Resource Read 확인
+응답에서 Protocol Support `[0]`과 Delivery Method `0`을 확인했다.
 
-### 8.4 그 다음 작은 단계: Firmware Status API
+### 8.4 Firmware Status API 완료
 
-Spring 서버에 최소 firmware status Read API를 추가한다.
+Spring Server가 등록된 Device의 Firmware Update 상태를 실제로 Read한다.
 
-1. endpoint registration 조회
-2. `/5/0/3` State Read
-3. `/5/0/5` Update Result Read
-4. 두 값을 하나의 HTTP JSON 응답으로 반환
-5. 실제 reference client를 등록해 curl로 확인
+```text
+GET /api/devices/{endpoint}/firmware/status
+```
+
+처리 흐름:
+
+1. endpoint로 Leshan Registration 조회
+2. State `/5/0/3` Read
+3. Update Result `/5/0/5` Read
+4. 두 값을 `FirmwareStatus`로 변환
+5. HTTP JSON 응답
+
+Reference client를 등록한 E2E 검증에서 HTTP `200`과 다음 응답을 확인했다.
+
+```json
+{
+  "endpoint": "linux-reference-01",
+  "state": 0,
+  "updateResult": 0
+}
+```
+
+Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 
 ### 8.5 그 다음 vertical slice
 
@@ -342,17 +358,15 @@ A/B boot, boot confirmation, rollback callback을 연결한다.
 
 ## 9. 이후 작업 순서
 
-1. Firmware Update `/5` v1.2 model과 reference client wiring
-2. Firmware Status Read API
-3. Milestone 3 direct `/5` OTA vertical slice
-4. Device endpoint와 credential provisioning
-5. PostgreSQL schema와 migration
-6. firmware artifact metadata와 Object Storage adapter
-7. 범용 telemetry ingestion 및 Observe/Notify
-8. Device Profile과 동적 Object model registry
-9. OTA Campaign, 여러 Device 동시성, staged rollout
-10. Admin UI
-11. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
+1. Milestone 3 direct `/5` OTA vertical slice
+2. Device endpoint와 credential provisioning
+3. PostgreSQL schema와 migration
+4. firmware artifact metadata와 Object Storage adapter
+5. 범용 telemetry ingestion 및 Observe/Notify
+6. Device Profile과 동적 Object model registry
+7. OTA Campaign, 여러 Device 동시성, staged rollout
+8. Admin UI
+9. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
 
 ## 10. Build와 실행
 
@@ -386,14 +400,18 @@ mvn spring-boot:run
 - HTTP current/latest API 응답
 - Client 종료 후 Deregistration와 server unregister event
 
-`/5` wiring에서 다음을 확인했다.
+`/5` v1.2 wiring에서 다음을 확인했다.
 
-- Registration에 `/5/0` 포함
-- State `/5/0/3` local Read
-- Update Result `/5/0/5` local Read
-- `/5` cleanup을 포함한 smoke test
+- Server가 OMA 공식 `/5` v1.2 DDF를 로드
+- Registration에 `</5>;ver=1.2,</5/0>` 포함
+- State `/5/0/3`과 Update Result `/5/0/5` local Read
+- Protocol Support `/5/0/8`이 Multiple Resource `[0]`으로 decode
+- Delivery Method `/5/0/9`가 Pull only `0`으로 decode
+- Firmware Object version과 Resource의 local smoke test
+- capability API HTTP `200`
+- status API HTTP `200`, State `0`, Update Result `0`
+- `/5` cleanup과 Client 정상 Deregistration
 
-Embedded Leshan을 통한 두 Resource Read는 다음 단계에 추가한다.
 
 ## 12. 새 세션 시작 지침
 
@@ -410,12 +428,16 @@ Embedded Leshan을 통한 두 Resource Read는 다음 단계에 추가한다.
 - `clients/linux-reference/CMakeLists.txt`
 - `experiments/wakaama/examples/client/common/object_firmware.c`
 - `server/src/main/java/ota/platform/server/config/LeshanServerConfiguration.java`
+- `server/src/main/java/ota/platform/server/controller/FirmwareController.java`
+- `server/src/main/java/ota/platform/server/firmware/FirmwareCapabilities.java`
+- `server/src/main/java/ota/platform/server/firmware/FirmwareStatus.java`
+- `server/src/main/resources/models/firmware-update-v1_2.xml`
 
 Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현하지
 않는다. `DEVICE_CLIENT_CONTRACT.md`를 Device Client 개발과 인수의 기준으로
 사용한다.
 
-다음에는 8.3절의 Firmware Update `/5` v1.2 model과 reference client wiring부터
-진행한다. DDF, Object version, Resource `/9`, Resource `/8` 순서로 하나씩
-구현하고 매 단계에서 사용자가 코드를 직접 이해하고 작성한 뒤 검증한다.
+다음에는 8.5절의 direct `/5` OTA vertical slice를 진행한다. 실제 firmware
+전송 코드보다 먼저 `/5` Adapter, Update Service, Device Update Backend의
+경계를 코드로 정의하고, 사용자가 각 책임을 이해하고 직접 작성한 뒤 검증한다.
 `/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.
