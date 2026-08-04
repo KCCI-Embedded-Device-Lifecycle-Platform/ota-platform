@@ -3,10 +3,10 @@
 #include <string.h>
 
 /*
- * Linux reference client protocol-wiring scaffold only.
+ * Wakaama adapter for LwM2M Firmware Update Object 1.2.
  *
  * State and Update Result can be read, but firmware transfer and installation
- * are deliberately rejected until a real update backend is connected.
+ * are rejected until Firmware Update Service is connected.
  */
 
 #define FIRMWARE_RESOURCE_PACKAGE 0

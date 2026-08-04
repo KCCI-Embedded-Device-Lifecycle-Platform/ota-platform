@@ -24,6 +24,16 @@ add_subdirectory(
     ${CMAKE_CURRENT_BINARY_DIR}/wakaama
 )
 
+add_subdirectory(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../device-integration-kit
+    ${CMAKE_CURRENT_BINARY_DIR}/device-integration-kit
+)
+
+add_subdirectory(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../device-integration-kit/adapters/wakaama
+    ${CMAKE_CURRENT_BINARY_DIR}/device-integration-kit-wakaama
+)
+
 set(
     WAKAAMA_CLIENT_COMMON_DIR
     ${CMAKE_CURRENT_SOURCE_DIR}/../../experiments/wakaama/examples/client/common
@@ -36,8 +46,6 @@ target_sources(
     PRIVATE
         src/object_bms.c
         include/object_bms.h
-        src/object_firmware.c
-        include/object_firmware.h
         include/standard_objects.h
         ${WAKAAMA_CLIENT_COMMON_DIR}/object_security.c
         ${WAKAAMA_CLIENT_COMMON_DIR}/object_server.c
@@ -53,6 +61,7 @@ target_include_directories(
 target_link_libraries(
     ota_linux_reference_client_objects
     PUBLIC
+        ota_device_integration_kit_wakaama
         wakaama_static
 )
 
