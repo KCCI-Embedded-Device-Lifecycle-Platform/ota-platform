@@ -119,21 +119,37 @@ ota_project/
 │   ├── leshan-demo/
 │   └── wakaama/
 ├── clients/
-│   └── linux-reference/             # direct LwM2M reference client
+│   ├── device-integration-kit/
+│   │   ├── CMakeLists.txt
+│   │   ├── README.md
+│   │   ├── include/
+│   │   │   ├── firmware_download_transport.h
+│   │   │   ├── firmware_update_backend.h
+│   │   │   └── firmware_update_service.h
+│   │   ├── src/
+│   │   │   └── firmware_update_service.c
+│   │   ├── adapters/wakaama/
+│   │   │   ├── CMakeLists.txt
+│   │   │   ├── include/object_firmware.h
+│   │   │   └── src/object_firmware.c
+│   │   └── tests/
+│   │       └── firmware_update_service_test.c
+│   └── linux-reference/
 │       ├── CMakeLists.txt
 │       ├── include/
+│       │   ├── linux_firmware_update_backend.h
 │       │   ├── reference_client_app.hpp
 │       │   ├── object_bms.h
-│       │   ├── object_firmware.h
 │       │   ├── standard_objects.h
 │       │   └── wakaama_hooks.h
 │       ├── src/
+│       │   ├── linux_firmware_update_backend.c
 │       │   ├── main.cpp
 │       │   ├── reference_client_app.cpp
 │       │   ├── object_bms.c
-│       │   ├── object_firmware.c
 │       │   └── wakaama_hooks.c
 │       └── tests/
+│           ├── linux_firmware_update_backend_test.c
 │           └── reference_client_smoke.cpp
 └── server/
     ├── pom.xml
@@ -254,8 +270,11 @@ latest 응답을 확인했다.
 ## 7. 현재 한계와 기술 부채
 
 - server URI, port, test endpoint가 아직 reference client code에 고정됨
-- `/5`는 State/Result Read wiring뿐이며 Package/URI/Execute는 아직 미구현
-- 실제 firmware download, hash/signature 검증, install, reboot, rollback 없음
+- `/5` Adapter, Update Service, Backend와 Download Transport 인터페이스는 연결됨
+- Linux 실행 앱에는 실제 Download Transport가 없어 Package URI가 `5.01`을 반환
+- Linux Backend는 파일 저장과 크기 검증만 지원하며 hash/signature 검증은 없음
+- boot recovery는 메모리 기반 simulation이며 프로세스 재시작 영속화는 없음
+- State와 Update Result 변경에 대한 LwM2M Notify는 아직 연결하지 않음
 - NoSec만 사용
 - Device credential provisioning 없음
 - telemetry는 요청 시 Read하며 Observe/Notify 또는 Send가 아님
@@ -286,22 +305,25 @@ DB부터 구현하지 않는다. 먼저 한 장치에서 표준 `/5` OTA protoco
 reboot, rollback, 상태 영속화도 하지 않는다. 따라서 build에 연결되는 것만으로
 OTA가 구현됐다고 간주하면 안 된다.
 
-### 8.2 Object wiring 완료 상태
+### 8.2 Device Integration Kit와 `/5` wiring 완료
 
-Reference client와 Server의 Firmware Update Object `/5` v1.2 protocol
-wiring을 완료했다.
+재사용 가능한 Client 구성요소를 `clients/device-integration-kit/`으로 분리했다.
 
-- Firmware Object factory/cleanup과 CMake 연결
-- Object 배열과 실패/cleanup 경로에 `/5` 포함
-- `/5` version `1.2` 광고
-- State `Idle(0)`, Update Result `Initial(0)` local Read
-- Protocol Support `/5/0/8`: CoAP (`0`) local Read
-- Delivery Method `/5/0/9`: Pull only (`0`) local Read
-- Package Write와 Update Execute: `5.01 Not Implemented`
-- `/5` v1.2 Resource와 version smoke 검증
-- Server에 OMA 공식 Firmware Update Object v1.2 DDF 추가
+- Firmware Update Service가 State, Update Result와 offset을 소유
+- Device Update Backend 함수표와 오류 변환 구현
+- Download Transport 함수표 정의
+- Wakaama `/5` v1.2 Adapter를 Kit 아래로 이동
+- State, Update Result, Protocol Support, Delivery Method Read
+- Severity와 Maximum Defer Period Read/Write
+- Package URI를 Download Transport에 전달
+- Update와 Cancel Execute를 Service에 연결
+- Cancel 시 Transport 중단 후 Backend staging 데이터 제거
+- Linux 파일 Backend와 Service/Backend/Adapter 테스트 추가
+- Server에 OMA 공식 Firmware Update Object v1.2 DDF 적용
 
-실제 firmware download, 검증, 설치 기능은 아직 구현하지 않았다.
+Package `/5/0/0` Push는 `5.01 Not Implemented`로 유지한다.
+Linux 실행 앱은 실제 Download Transport가 없어 Package URI도 `5.01`을 반환한다.
+Smoke test에서는 가짜 Transport로 Adapter 연결과 실패 결과 변환을 검증한다.
 
 ### 8.3 `/5` v1.2 기반 정리 완료
 
@@ -343,18 +365,18 @@ Reference client를 등록한 E2E 검증에서 HTTP `200`과 다음 응답을 �
 
 Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 
-### 8.5 그 다음 vertical slice
+### 8.5 다음 vertical slice: 실제 Package URI 흐름
 
-1. Linux 임시 파일에 firmware stream 저장
-2. 예상 SHA-256과 실제 파일 hash 비교
-3. State와 Update Result를 올바르게 변경하고 notify
-4. Update Execute에서 simulated install 수행
-5. 성공, download 실패, hash 불일치, install 실패 결과 검증
-6. Spring 서버에 최소 OTA trigger API 추가
-7. protocol 검증 뒤 Package URI download와 Object Storage adapter로 확장
+1. Linux Reference용 비동기 CoAP Download Transport 구현
+2. Transport가 Service의 `begin_download`, `write_chunk`, `finish_download` 호출
+3. State와 Update Result 변경을 Wakaama Observe/Notify에 연결
+4. Artifact manifest, hash, signature와 anti-rollback 검증 추가
+5. install 요청과 boot 결과를 프로세스 재시작 후에도 복구하도록 영속화
+6. Spring Server에 최소 OTA trigger API 추가
+7. Package URI부터 Success 또는 실패 Result까지 E2E 검증
 
-실제 MCU 단계에서는 같은 관리 흐름에 flash write, signature verification,
-A/B boot, boot confirmation, rollback callback을 연결한다.
+실제 장치에서는 동일한 Transport와 Backend 인터페이스에
+RTOS network stack, Flash, Bootloader, boot confirmation과 rollback 구현을 연결한다.
 
 ## 9. 이후 작업 순서
 
@@ -420,11 +442,16 @@ mvn spring-boot:run
 - `ARCHITECTURE.md`
 - `DEVELOPMENT_STATUS.md`
 - `DEVICE_CLIENT_CONTRACT.md`
+- `clients/device-integration-kit/README.md`
+- `clients/device-integration-kit/include/firmware_download_transport.h`
+- `clients/device-integration-kit/include/firmware_update_backend.h`
+- `clients/device-integration-kit/include/firmware_update_service.h`
+- `clients/device-integration-kit/src/firmware_update_service.c`
+- `clients/device-integration-kit/adapters/wakaama/src/object_firmware.c`
+- `clients/linux-reference/include/linux_firmware_update_backend.h`
+- `clients/linux-reference/src/linux_firmware_update_backend.c`
 - `clients/linux-reference/include/reference_client_app.hpp`
 - `clients/linux-reference/src/reference_client_app.cpp`
-- `clients/linux-reference/include/object_firmware.h`
-- `clients/linux-reference/src/object_firmware.c`
-- `clients/linux-reference/include/standard_objects.h`
 - `clients/linux-reference/CMakeLists.txt`
 - `experiments/wakaama/examples/client/common/object_firmware.c`
 - `server/src/main/java/ota/platform/server/config/LeshanServerConfiguration.java`
@@ -433,11 +460,11 @@ mvn spring-boot:run
 - `server/src/main/java/ota/platform/server/firmware/FirmwareStatus.java`
 - `server/src/main/resources/models/firmware-update-v1_2.xml`
 
-Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현하지
-않는다. `DEVICE_CLIENT_CONTRACT.md`를 Device Client 개발과 인수의 기준으로
-사용한다.
+Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현하지 않는다.
+Device Integration Kit의 Adapter, Service, Download Transport와 Backend 경계도
+다시 설계하지 않는다.
 
-다음에는 8.5절의 direct `/5` OTA vertical slice를 진행한다. 실제 firmware
-전송 코드보다 먼저 `/5` Adapter, Update Service, Device Update Backend의
-경계를 코드로 정의하고, 사용자가 각 책임을 이해하고 직접 작성한 뒤 검증한다.
+다음에는 8.5절의 Linux Reference용 실제 Package URI 흐름을 진행한다.
+가짜 Transport로 검증한 연결을 실제 비동기 CoAP Download Transport로 교체하고,
+State와 Update Result Notify 및 Artifact 보안 검증으로 확장한다.
 `/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

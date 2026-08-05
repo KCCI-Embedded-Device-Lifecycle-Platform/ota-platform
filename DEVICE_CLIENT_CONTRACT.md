@@ -95,14 +95,18 @@ LwM2M `/5` Adapter
 
 | 계층 | 책임 | 담당 |
 |---|---|---|
-| `/5` Adapter | Package URI, Update, Cancel 명령 수신, State/Result 노출 | 플랫폼 계약 |
-| Update Service | download 흐름, 상태 전이, 오류 변환 | 플랫폼 reference |
-| Update Backend | flash 기록, 검증, 설치, reboot, rollback | 장치 개발자 |
+| `/5` Adapter | Package URI, Update, Cancel 수신과 Resource 노출 | 플랫폼 제공 |
+| Download Transport | URI 다운로드, Service에 chunk 전달, network 취소 | 플랫폼 인터페이스 / 장치 구현 |
+| Update Service | 상태 전이, offset 관리, 오류 변환 | 플랫폼 제공 |
+| Update Backend | flash 기록, 검증, install, reboot, rollback | 플랫폼 인터페이스 / 장치 구현 |
 
 Device Update Backend는 LwM2M message를 직접 만들지 않는다.
 처리 결과만 Update Service에 반환하고, /5 Adapter가 표준 State와 Update Result로 Server에 보고한다.
-현재 `clients/linux-reference/src/object_firmware.c`는 State와 Update Result Read만 구현한다.
-Package URI, Update Execute, Update Service와 Backend 연결은 아직 구현되지 않았다.
+현재 Wakaama Adapter는
+`clients/device-integration-kit/adapters/wakaama/`에 위치한다.
+State, Update Result와 정책 Resource, Package URI 전달,
+Update와 Cancel Execute를 Service에 연결한다.
+실제 Download Transport와 Artifact 보안 검증은 아직 구현되지 않았다.
 
 ## 5. Firmware Update 상태 전이
 

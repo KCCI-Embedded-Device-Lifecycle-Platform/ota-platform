@@ -2,11 +2,14 @@
 #include "object_firmware.h"
 #include "standard_objects.h"
 #include "wakaama_hooks.h"
-//#include <bits/stdc++.h>
+#include "firmware_update_service.h"
+#include "linux_firmware_update_backend.h"
+
 #include <iostream>
 #include <ctime>
 #include <sys/select.h>
 #include <unistd.h>
+#include <cstring>
 using namespace std;
 
 constexpr uint16_t SECURITY_OBJECT_INDEX = 0;
@@ -15,6 +18,52 @@ constexpr uint16_t DEVICE_OBJECT_INDEX = 2;
 constexpr uint16_t FIRMWARE_OBJECT_INDEX = 3;
 constexpr uint16_t BMS_OBJECT_INDEX = 4;
 constexpr uint16_t CLIENT_OBJECT_COUNT = 5;
+
+struct SmokeDownloadTransportContext
+{
+    int startCallCount;
+    int cancelCallCount;
+    char uri[128];
+    size_t uriLength;
+    firmware_update_service_t *service;
+    firmware_download_transport_status_t nextStartStatus;
+};
+
+static firmware_download_transport_status_t smokeStartDownload(
+    void *rawContext,
+    const char *uri,
+    size_t uriLength,
+    firmware_update_service_t *service)
+{
+    auto *context =
+        static_cast<SmokeDownloadTransportContext *>(rawContext);
+
+    if (context == nullptr ||
+        uri == nullptr ||
+        uriLength == 0 ||
+        uriLength >= sizeof(context->uri))
+        return FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_INVALID_URI;
+
+    std::memcpy(context->uri, uri, uriLength);
+    context->uri[uriLength] = '\0';
+    context->uriLength = uriLength;
+    context->service = service;
+    context->startCallCount++;
+
+    return context->nextStartStatus;
+}
+
+static firmware_download_transport_status_t smokeCancelDownload(void *rawContext)
+{
+    auto *context =
+        static_cast<SmokeDownloadTransportContext *>(rawContext);
+
+    if (context == nullptr)
+        return FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_INTERNAL_FAILURE;
+
+    context->cancelCallCount++;
+    return FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_OK;
+}
 
 static bool testSecurityObject()
 {
@@ -61,9 +110,11 @@ static bool testServerObject()
     return validObject;
 }
 
-static bool testFirmwareObject()
+static bool testFirmwareObject(
+    firmware_update_service_t *firmwareUpdateService,
+    firmware_download_transport_t *firmwareDownloadTransport)
 {
-    lwm2m_object_t *firmwareObjectP = get_firmware_update_object();
+    lwm2m_object_t *firmwareObjectP = get_firmware_update_object(firmwareUpdateService, firmwareDownloadTransport);
 
     if (firmwareObjectP == nullptr)
         return false;
@@ -83,6 +134,8 @@ static bool testFirmwareObject()
     int64_t updateResult = -1;
     int64_t deliveryMethod = -1;
     int64_t protocolSupport = -1;
+    int64_t severity = -1;
+    uint64_t maximumDeferPeriod = UINT64_MAX;
     lwm2m_data_t packageData{};
     packageData.id = 0;
 
@@ -91,6 +144,81 @@ static bool testFirmwareObject()
         0,
         1,
         &packageData,
+        firmwareObjectP,
+        LWM2M_WRITE_PARTIAL_UPDATE
+    );
+
+    constexpr const char packageUri[] = "coap://127.0.0.1:5683/firmware.bin";
+
+    lwm2m_data_t *packageUriDataP = lwm2m_data_new(1);
+
+    if (packageUriDataP == nullptr)
+    {
+        free_firmware_update_object(firmwareObjectP);
+        return false;
+    }
+
+    packageUriDataP->id = 1;
+    lwm2m_data_encode_nstring(
+        packageUri,
+        sizeof(packageUri) - 1,
+        packageUriDataP
+    );
+
+    uint8_t packageUriWriteResult = firmwareObjectP->writeFunc(
+        nullptr,
+        0,
+        1,
+        packageUriDataP,
+        firmwareObjectP,
+        LWM2M_WRITE_PARTIAL_UPDATE
+    );
+
+    auto *downloadTransportContext =
+        static_cast<SmokeDownloadTransportContext *>(
+            firmwareDownloadTransport->context
+        );
+
+    downloadTransportContext->nextStartStatus =
+    FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_INVALID_URI;
+
+    uint8_t invalidUriWriteResult = firmwareObjectP->writeFunc(
+            nullptr,
+            0,
+            1,
+            packageUriDataP,
+            firmwareObjectP,
+            LWM2M_WRITE_PARTIAL_UPDATE
+        );
+
+    downloadTransportContext->nextStartStatus =
+        FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_OK;
+
+    lwm2m_data_t severityData{};
+    severityData.id = 11;
+    lwm2m_data_encode_int(
+        FIRMWARE_UPDATE_SEVERITY_OPTIONAL,
+        &severityData
+    );
+
+    uint8_t severityWriteResult = firmwareObjectP->writeFunc(
+        nullptr,
+        0,
+        1,
+        &severityData,
+        firmwareObjectP,
+        LWM2M_WRITE_PARTIAL_UPDATE
+    );
+
+    lwm2m_data_t maximumDeferPeriodData{};
+    maximumDeferPeriodData.id = 13;
+    lwm2m_data_encode_uint(3600, &maximumDeferPeriodData);
+
+    uint8_t maximumDeferPeriodWriteResult = firmwareObjectP->writeFunc(
+        nullptr,
+        0,
+        1,
+        &maximumDeferPeriodData,
         firmwareObjectP,
         LWM2M_WRITE_PARTIAL_UPDATE
     );
@@ -109,7 +237,7 @@ static bool testFirmwareObject()
         firmwareObjectP->versionMajor == 1 &&
         firmwareObjectP->versionMinor == 2 &&
         readResult == COAP_205_CONTENT &&
-        numData == 4 &&
+        numData == 6 &&
         dataArrayP != nullptr &&
         dataArrayP[0].id == 3 &&
         dataArrayP[1].id == 5 &&
@@ -119,6 +247,8 @@ static bool testFirmwareObject()
         dataArrayP[2].value.asChildren.count == 1 &&
         dataArrayP[2].value.asChildren.array != nullptr &&
         dataArrayP[2].value.asChildren.array[0].id == 0 &&
+        dataArrayP[4].id == 11 &&
+        dataArrayP[5].id == 13 &&
         lwm2m_data_decode_int(&dataArrayP[0], &state) != 0 &&
         lwm2m_data_decode_int(&dataArrayP[1], &updateResult) != 0 &&
         lwm2m_data_decode_int(
@@ -126,16 +256,131 @@ static bool testFirmwareObject()
             &protocolSupport
         ) != 0 &&
         lwm2m_data_decode_int(&dataArrayP[3], &deliveryMethod) != 0 &&
+        lwm2m_data_decode_int(&dataArrayP[4], &severity) != 0 &&
+        lwm2m_data_decode_uint(
+            &dataArrayP[5],
+            &maximumDeferPeriod
+        ) != 0 &&
+        severity == 1 &&
+        maximumDeferPeriod == 0 &&
         state == 0 &&
         updateResult == 0 &&
         protocolSupport == 0 &&
         deliveryMethod == 0 &&
         packageWriteResult == COAP_501_NOT_IMPLEMENTED &&
-        updateExecuteResult == COAP_501_NOT_IMPLEMENTED;
+        severityWriteResult == COAP_204_CHANGED &&
+        maximumDeferPeriodWriteResult == COAP_204_CHANGED &&
+        firmwareUpdateService->severity == FIRMWARE_UPDATE_SEVERITY_OPTIONAL &&
+        firmwareUpdateService->maximum_defer_period_seconds == 3600 &&
+        packageUriWriteResult == COAP_204_CHANGED &&
+        downloadTransportContext->startCallCount == 2 &&
+        invalidUriWriteResult == COAP_400_BAD_REQUEST &&
+        firmwareUpdateService->state == FIRMWARE_UPDATE_STATE_IDLE &&
+        firmwareUpdateService->update_result == FIRMWARE_UPDATE_RESULT_INVALID_URI &&
+        downloadTransportContext->uriLength == sizeof(packageUri) - 1 &&
+        std::strcmp(downloadTransportContext->uri, packageUri) == 0 &&
+        downloadTransportContext->service == firmwareUpdateService &&
+        updateExecuteResult == COAP_405_METHOD_NOT_ALLOWED;
 
     if (dataArrayP != nullptr)
         lwm2m_data_free(numData, dataArrayP);
 
+    /* Simulate a downloader feeding a verified package to the Service. */
+    const uint8_t firmwarePackage[] = {0x11, 0x22, 0x33, 0x44};
+
+    firmware_update_service_status_t beginResult =
+        firmware_update_service_begin_download(
+            firmwareUpdateService,
+            sizeof(firmwarePackage)
+        );
+
+    firmware_update_service_status_t writeResult =
+        firmware_update_service_write_chunk(
+            firmwareUpdateService,
+            firmwarePackage,
+            sizeof(firmwarePackage)
+        );
+
+    firmware_update_service_status_t finishResult =
+        firmware_update_service_finish_download(
+            firmwareUpdateService
+        );
+
+    /* Execute /5/0/2 through the Wakaama Adapter. */
+    uint8_t downloadedUpdateExecuteResult =
+        firmwareObjectP->executeFunc(
+            nullptr,
+            0,
+            2,
+            nullptr,
+            0,
+            firmwareObjectP
+        );
+
+    firmware_update_state_t stateAfterInstall =
+        firmwareUpdateService->state;
+
+    firmware_update_service_status_t recoveryResult =
+        firmware_update_service_recover_after_boot(
+            firmwareUpdateService
+        );
+
+    validObject =
+        validObject &&
+        beginResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        writeResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        finishResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        downloadedUpdateExecuteResult == COAP_204_CHANGED &&
+        stateAfterInstall == FIRMWARE_UPDATE_STATE_UPDATING &&
+        recoveryResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        firmwareUpdateService->state == FIRMWARE_UPDATE_STATE_IDLE &&
+        firmwareUpdateService->update_result ==
+            FIRMWARE_UPDATE_RESULT_SUCCESS;
+    
+    /* Start another download and cancel it through /5/0/10. */
+    firmware_update_service_status_t cancelBeginResult =
+        firmware_update_service_begin_download(
+            firmwareUpdateService,
+            sizeof(firmwarePackage)
+        );
+
+    firmware_update_service_status_t cancelWriteResult =
+        firmware_update_service_write_chunk(
+            firmwareUpdateService,
+            firmwarePackage,
+            2
+        );
+
+    uint8_t cancelExecuteResult =
+        firmwareObjectP->executeFunc(
+            nullptr,
+            0,
+            10,
+            nullptr,
+            0,
+            firmwareObjectP
+        );
+
+    auto *linuxBackendContext =
+        static_cast<linux_firmware_update_backend_context_t *>(
+            firmwareUpdateService->backend.context
+        );
+
+    validObject =
+        validObject &&
+        cancelBeginResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        cancelWriteResult == FIRMWARE_UPDATE_SERVICE_STATUS_OK &&
+        cancelExecuteResult == COAP_204_CHANGED &&
+        firmwareUpdateService->state == FIRMWARE_UPDATE_STATE_IDLE &&
+        firmwareUpdateService->update_result ==
+            FIRMWARE_UPDATE_RESULT_CANCELLED &&
+        firmwareUpdateService->download_offset == 0 &&
+        linuxBackendContext->staging_file == nullptr &&
+        linuxBackendContext->received_size == 0 &&
+        downloadTransportContext->cancelCallCount == 1 &&
+        !linuxBackendContext->package_ready;
+    
+    lwm2m_data_free(1, packageUriDataP);    
     free_firmware_update_object(firmwareObjectP);
 
     return validObject;
@@ -225,6 +470,31 @@ static void freeClientObjects(lwm2m_object_t *objects[])
 
 int main()
 {
+    constexpr const char *firmwareStagingPath = "/tmp/ota-linux-reference-smoke-firmware.bin";
+
+    linux_firmware_update_backend_context_t firmwareBackendContext{};
+    firmware_update_backend_t firmwareBackend{};
+    firmware_update_service_t firmwareUpdateService{};
+
+    if (!linux_firmware_update_backend_init(
+            &firmwareBackendContext,
+            firmwareStagingPath,
+            &firmwareBackend) ||
+        !firmware_update_service_init(
+            &firmwareUpdateService,
+            &firmwareBackend))
+    {
+        cerr << "Failed to initialize firmware update components\n";
+        return 1;
+    }
+
+    SmokeDownloadTransportContext downloadTransportContext{};
+
+    firmware_download_transport_t firmwareDownloadTransport{};
+    firmwareDownloadTransport.context = &downloadTransportContext;
+    firmwareDownloadTransport.start = smokeStartDownload;
+    firmwareDownloadTransport.cancel = smokeCancelDownload;
+
     if(!testConnectionClose())
     {
         cerr << "Connection close test failed\n";
@@ -246,7 +516,7 @@ int main()
     }
     cout << "Server object test passed\n";
 
-    if (!testFirmwareObject())
+    if (!testFirmwareObject(&firmwareUpdateService, &firmwareDownloadTransport))
     {
         cerr << "Firmware Update object test failed\n";
         return 1;
@@ -311,7 +581,7 @@ int main()
     objects[SECURITY_OBJECT_INDEX] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
     objects[SERVER_OBJECT_INDEX] = get_server_object(serverId, "U", lifetime, false);
     objects[DEVICE_OBJECT_INDEX] = get_object_device();
-    objects[FIRMWARE_OBJECT_INDEX] = get_firmware_update_object();
+    objects[FIRMWARE_OBJECT_INDEX] = get_firmware_update_object(&firmwareUpdateService, &firmwareDownloadTransport);
     objects[BMS_OBJECT_INDEX] = get_bms_object();
 
     if (objects[SECURITY_OBJECT_INDEX] == nullptr ||
@@ -530,6 +800,8 @@ int main()
 
     ::close(clientContext.socketFd);
     clientContext.socketFd = -1;
+
+    linux_firmware_update_backend_deinit(&firmwareBackendContext);
 
     return readSucceeded ? 0 : 1;
 }

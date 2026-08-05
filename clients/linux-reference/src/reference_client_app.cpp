@@ -2,6 +2,7 @@
 #include "object_bms.h"
 #include "object_firmware.h"
 #include "standard_objects.h"
+
 #include <ctime>
 #include <cerrno>
 #include <csignal>
@@ -22,7 +23,9 @@ namespace
     }
 }
 
-ReferenceClientApp::ReferenceClientApp() : clientContext{}, lwm2mContextP{nullptr}, objects{}
+ReferenceClientApp::ReferenceClientApp() :
+    firmwareBackendContext{}, firmwareBackend{}, firmwareUpdateService{},
+    clientContext{}, lwm2mContextP{nullptr}, objects{}
 {
     clientContext.securityObjectP = nullptr;
     clientContext.socketFd = -1;
@@ -47,6 +50,7 @@ ReferenceClientApp::~ReferenceClientApp()
     }
 
     destroyClientObjects();
+    linux_firmware_update_backend_deinit(&firmwareBackendContext);
 
     if (clientContext.socketFd >= 0)
     {
@@ -65,7 +69,7 @@ bool ReferenceClientApp::createClientObjects()
     objects[SecurityObjectIndex] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
     objects[ServerObjectIndex] = get_server_object(serverId, binding, lifetime, false);
     objects[DeviceObjectIndex] = get_object_device();
-    objects[FirmwareObjectIndex] = get_firmware_update_object();
+    objects[FirmwareObjectIndex] = get_firmware_update_object(&firmwareUpdateService, nullptr);
     objects[BmsObjectIndex] = get_bms_object();
 
     if (objects[SecurityObjectIndex] == nullptr ||
@@ -123,6 +127,34 @@ void ReferenceClientApp::destroyClientObjects()
 
 bool ReferenceClientApp::initialize()
 {
+    constexpr const char *firmwareStagingPath =
+        "/tmp/ota-linux-reference-firmware.bin";
+
+    if (!linux_firmware_update_backend_init(
+            &firmwareBackendContext,
+            firmwareStagingPath,
+            &firmwareBackend))
+    {
+        cerr << "Failed to initialize Linux firmware Backend\n";
+        return false;
+    }
+
+    if (!firmware_update_service_init(
+            &firmwareUpdateService,
+            &firmwareBackend))
+    {
+        cerr << "Failed to initialize Firmware Update Service\n";
+        return false;
+    }
+
+    if (firmware_update_service_recover_after_boot(
+            &firmwareUpdateService) !=
+        FIRMWARE_UPDATE_SERVICE_STATUS_OK)
+    {
+        cerr << "Failed to recover firmware update state\n";
+        return false;
+    }
+
     constexpr const char *clientPort = "56830";
 
     clientContext.socketFd = lwm2m_create_socket(clientPort, clientContext.addressFamily);

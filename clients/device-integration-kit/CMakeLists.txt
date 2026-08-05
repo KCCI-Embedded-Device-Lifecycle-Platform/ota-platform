@@ -4,6 +4,7 @@ add_library(
         src/firmware_update_service.c
         include/firmware_update_backend.h
         include/firmware_update_service.h
+        include/firmware_download_transport.h
 )
 
 target_include_directories(

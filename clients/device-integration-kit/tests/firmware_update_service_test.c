@@ -281,6 +281,22 @@ int main(void)
     assert(service.state == FIRMWARE_UPDATE_STATE_DOWNLOADED);
     assert(service.update_result == FIRMWARE_UPDATE_RESULT_DEFERRED);
 
+    /* An invalid Package URI is exposed as Update Result 7. */
+    assert(firmware_update_service_init(&service, &backend));
+
+    assert(
+        firmware_update_service_fail_download(
+            &service,
+            FIRMWARE_UPDATE_DOWNLOAD_FAILURE_INVALID_URI
+        ) == FIRMWARE_UPDATE_SERVICE_STATUS_OK
+    );
+    assert(service.state == FIRMWARE_UPDATE_STATE_IDLE);
+    assert(
+        service.update_result ==
+        FIRMWARE_UPDATE_RESULT_INVALID_URI
+    );
+    assert(service.download_offset == 0);
+
     puts("firmware update service test passed");
     return 0;
 }

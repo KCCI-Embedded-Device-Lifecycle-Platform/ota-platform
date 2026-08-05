@@ -39,6 +39,42 @@ set(
     ${CMAKE_CURRENT_SOURCE_DIR}/../../experiments/wakaama/examples/client/common
 )
 
+add_library(
+    ota_linux_reference_firmware_backend
+    STATIC
+        src/linux_firmware_update_backend.c
+        include/linux_firmware_update_backend.h
+)
+
+target_include_directories(
+    ota_linux_reference_firmware_backend
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    ota_linux_reference_firmware_backend
+    PUBLIC
+        ota_device_integration_kit
+)
+
+target_compile_features(
+    ota_linux_reference_firmware_backend
+    PUBLIC
+        c_std_99
+)
+
+add_executable(
+    ota_linux_reference_firmware_backend_test
+    tests/linux_firmware_update_backend_test.c
+)
+
+target_link_libraries(
+    ota_linux_reference_firmware_backend_test
+    PRIVATE
+        ota_linux_reference_firmware_backend
+)
+
 add_library(ota_linux_reference_client_objects STATIC)
 
 target_sources(
@@ -76,6 +112,7 @@ target_link_libraries(
     ota_linux_reference_client_smoke
     PRIVATE
         ota_linux_reference_client_objects
+        ota_linux_reference_firmware_backend
 )
 
 add_executable(
@@ -91,4 +128,5 @@ target_link_libraries(
     ota_linux_reference_client
     PRIVATE
         ota_linux_reference_client_objects
+        ota_linux_reference_firmware_backend
 )

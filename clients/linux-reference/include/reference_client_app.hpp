@@ -2,6 +2,8 @@
 #define OTA_LINUX_REFERENCE_CLIENT_APP_HPP
 
 #include "wakaama_hooks.h"
+#include "firmware_update_service.h"
+#include "linux_firmware_update_backend.h"
 
 #include <array>
 #include <cstddef>
@@ -25,6 +27,10 @@ private:
     static constexpr std::size_t FirmwareObjectIndex = 3;
     static constexpr std::size_t BmsObjectIndex = 4;
     static constexpr std::size_t objectCount = 5;
+
+    linux_firmware_update_backend_context_t firmwareBackendContext;
+    firmware_update_backend_t firmwareBackend;
+    firmware_update_service_t firmwareUpdateService;
 
     wakaama_client_context_t clientContext;
     lwm2m_context_t *lwm2mContextP;

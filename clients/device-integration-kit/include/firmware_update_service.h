@@ -25,6 +25,14 @@ typedef enum
 
 typedef enum
 {
+    FIRMWARE_UPDATE_DOWNLOAD_FAILURE_CONNECTION_LOST = 0,
+    FIRMWARE_UPDATE_DOWNLOAD_FAILURE_INVALID_URI,
+    FIRMWARE_UPDATE_DOWNLOAD_FAILURE_UNSUPPORTED_PROTOCOL,
+    FIRMWARE_UPDATE_DOWNLOAD_FAILURE_INTERNAL
+} firmware_update_download_failure_t;
+
+typedef enum
+{
     FIRMWARE_UPDATE_RESULT_INITIAL = 0,
     FIRMWARE_UPDATE_RESULT_SUCCESS = 1,
     FIRMWARE_UPDATE_RESULT_NO_STORAGE = 2,
@@ -80,6 +88,10 @@ firmware_update_service_status_t firmware_update_service_install(
 
 firmware_update_service_status_t firmware_update_service_cancel(
     firmware_update_service_t *service);
+
+firmware_update_service_status_t firmware_update_service_fail_download(
+    firmware_update_service_t *service,
+    firmware_update_download_failure_t failure);
 
 firmware_update_service_status_t firmware_update_service_recover_after_boot(
     firmware_update_service_t *service);

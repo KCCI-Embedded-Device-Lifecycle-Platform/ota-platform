@@ -246,6 +246,65 @@ firmware_update_service_status_t firmware_update_service_cancel(
     return FIRMWARE_UPDATE_SERVICE_STATUS_OK;
 }
 
+firmware_update_service_status_t firmware_update_service_fail_download(
+    firmware_update_service_t *service,
+    firmware_update_download_failure_t failure)
+{
+    firmware_update_result_t update_result;
+
+    if (service == NULL)
+        return FIRMWARE_UPDATE_SERVICE_STATUS_INVALID_ARGUMENT;
+
+    switch (failure)
+    {
+    case FIRMWARE_UPDATE_DOWNLOAD_FAILURE_CONNECTION_LOST:
+        update_result =
+            FIRMWARE_UPDATE_RESULT_CONNECTION_LOST;
+        break;
+
+    case FIRMWARE_UPDATE_DOWNLOAD_FAILURE_INVALID_URI:
+        update_result =
+            FIRMWARE_UPDATE_RESULT_INVALID_URI;
+        break;
+
+    case FIRMWARE_UPDATE_DOWNLOAD_FAILURE_UNSUPPORTED_PROTOCOL:
+        update_result =
+            FIRMWARE_UPDATE_RESULT_UNSUPPORTED_PROTOCOL;
+        break;
+
+    case FIRMWARE_UPDATE_DOWNLOAD_FAILURE_INTERNAL:
+        update_result =
+            FIRMWARE_UPDATE_RESULT_UPDATE_FAILURE;
+        break;
+
+    default:
+        return FIRMWARE_UPDATE_SERVICE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (service->state != FIRMWARE_UPDATE_STATE_IDLE &&
+        service->state != FIRMWARE_UPDATE_STATE_DOWNLOADING)
+        return FIRMWARE_UPDATE_SERVICE_STATUS_INVALID_STATE;
+
+    if (service->state == FIRMWARE_UPDATE_STATE_DOWNLOADING)
+    {
+        firmware_backend_status_t backend_status =
+            service->backend.cancel(service->backend.context);
+
+        if (backend_status != FIRMWARE_BACKEND_STATUS_OK)
+        {
+            service->update_result =
+                prv_map_backend_status(backend_status);
+            return FIRMWARE_UPDATE_SERVICE_STATUS_BACKEND_FAILURE;
+        }
+    }
+
+    service->state = FIRMWARE_UPDATE_STATE_IDLE;
+    service->update_result = update_result;
+    service->download_offset = 0;
+
+    return FIRMWARE_UPDATE_SERVICE_STATUS_OK;
+}
+
 firmware_update_service_status_t firmware_update_service_set_severity(
     firmware_update_service_t *service,
     firmware_update_severity_t severity)
