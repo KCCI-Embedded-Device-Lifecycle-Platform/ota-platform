@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.21)
 
 project(ota_linux_reference_client LANGUAGES C CXX)
 
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(
+    LIBCOAP_NOTLS
+    REQUIRED
+    IMPORTED_TARGET
+    libcoap-3-notls
+)
+
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -64,6 +73,74 @@ target_compile_features(
         c_std_99
 )
 
+add_library(
+    ota_linux_reference_coap_download_transport
+    STATIC
+        src/linux_coap_download_transport.c
+        src/linux_coap_uri.c
+        include/linux_coap_download_transport.h
+)
+
+target_include_directories(
+    ota_linux_reference_coap_download_transport
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(
+    ota_linux_reference_coap_download_transport
+    PUBLIC
+        ota_device_integration_kit
+    PRIVATE
+        PkgConfig::LIBCOAP_NOTLS
+)
+
+target_compile_features(
+    ota_linux_reference_coap_download_transport
+    PUBLIC
+        c_std_99
+)
+
+add_executable(
+    ota_linux_reference_coap_download_transport_test
+    tests/linux_coap_download_transport_test.c
+)
+
+target_link_libraries(
+    ota_linux_reference_coap_download_transport_test
+    PRIVATE
+        ota_linux_reference_coap_download_transport
+)
+
+add_executable(
+    ota_linux_reference_coap_download_transport_e2e_test
+    tests/linux_coap_download_transport_e2e_test.c
+)
+
+target_link_libraries(
+    ota_linux_reference_coap_download_transport_e2e_test
+    PRIVATE
+        ota_linux_reference_coap_download_transport
+        ota_linux_reference_firmware_backend
+)
+
+add_executable(
+    ota_linux_reference_coap_uri_test
+    tests/linux_coap_uri_test.c
+)
+
+target_include_directories(
+    ota_linux_reference_coap_uri_test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    ota_linux_reference_coap_uri_test
+    PRIVATE
+        ota_linux_reference_coap_download_transport
+)
+
 add_executable(
     ota_linux_reference_firmware_backend_test
     tests/linux_firmware_update_backend_test.c
@@ -99,6 +176,7 @@ target_link_libraries(
     PUBLIC
         ota_device_integration_kit_wakaama
         wakaama_static
+        ota_linux_reference_coap_download_transport
 )
 
 add_executable(

@@ -4,6 +4,7 @@
 #include "wakaama_hooks.h"
 #include "firmware_update_service.h"
 #include "linux_firmware_update_backend.h"
+#include "linux_coap_download_transport.h"
 
 #include <array>
 #include <cstddef>
@@ -31,6 +32,8 @@ private:
     linux_firmware_update_backend_context_t firmwareBackendContext;
     firmware_update_backend_t firmwareBackend;
     firmware_update_service_t firmwareUpdateService;
+    firmware_download_transport_t firmwareDownloadTransport;
+    linux_coap_download_transport_t *firmwareDownloadTransportContext;
 
     wakaama_client_context_t clientContext;
     lwm2m_context_t *lwm2mContextP;

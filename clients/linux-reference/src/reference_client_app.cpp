@@ -25,6 +25,7 @@ namespace
 
 ReferenceClientApp::ReferenceClientApp() :
     firmwareBackendContext{}, firmwareBackend{}, firmwareUpdateService{},
+    firmwareDownloadTransport{}, firmwareDownloadTransportContext{nullptr},
     clientContext{}, lwm2mContextP{nullptr}, objects{}
 {
     clientContext.securityObjectP = nullptr;
@@ -50,6 +51,13 @@ ReferenceClientApp::~ReferenceClientApp()
     }
 
     destroyClientObjects();
+    if (firmwareDownloadTransportContext != nullptr)
+    {
+        linux_coap_download_transport_destroy(
+            firmwareDownloadTransportContext
+        );
+        firmwareDownloadTransportContext = nullptr;
+    }
     linux_firmware_update_backend_deinit(&firmwareBackendContext);
 
     if (clientContext.socketFd >= 0)
@@ -69,7 +77,7 @@ bool ReferenceClientApp::createClientObjects()
     objects[SecurityObjectIndex] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
     objects[ServerObjectIndex] = get_server_object(serverId, binding, lifetime, false);
     objects[DeviceObjectIndex] = get_object_device();
-    objects[FirmwareObjectIndex] = get_firmware_update_object(&firmwareUpdateService, nullptr);
+    objects[FirmwareObjectIndex] = get_firmware_update_object(&firmwareUpdateService, &firmwareDownloadTransport);
     objects[BmsObjectIndex] = get_bms_object();
 
     if (objects[SecurityObjectIndex] == nullptr ||
@@ -152,6 +160,17 @@ bool ReferenceClientApp::initialize()
         FIRMWARE_UPDATE_SERVICE_STATUS_OK)
     {
         cerr << "Failed to recover firmware update state\n";
+        return false;
+    }
+
+    firmwareDownloadTransportContext =
+        linux_coap_download_transport_create(
+            &firmwareDownloadTransport
+        );
+
+    if (firmwareDownloadTransportContext == nullptr)
+    {
+        cerr << "Failed to initialize Linux CoAP Download Transport\n";
         return false;
     }
 

@@ -9,6 +9,23 @@
 extern "C" {
 #endif
 
+/*
+ * start() accepts a download request and returns without waiting for the
+ * complete firmware image.
+ *
+ * An asynchronous implementation must copy the URI before returning, then
+ * feed received data through:
+ *
+ *   firmware_update_service_begin_download()
+ *   firmware_update_service_write_chunk()
+ *   firmware_update_service_finish_download()
+ *
+ * The complete firmware image must not be buffered in RAM.
+ *
+ * cancel() must stop future chunk delivery and be safe to call even when
+ * no download is active.
+ */
+
 typedef enum
 {
     FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_OK = 0,
