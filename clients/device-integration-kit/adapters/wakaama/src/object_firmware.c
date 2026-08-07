@@ -265,7 +265,7 @@ static uint8_t prv_write(
                 instanceP->download_transport->start == NULL)
                 return COAP_501_NOT_IMPLEMENTED;
 
-            if (dataArray[index].type != LWM2M_TYPE_STRING ||
+            if ((dataArray[index].type != LWM2M_TYPE_STRING && dataArray[index].type != LWM2M_TYPE_OPAQUE) ||
                 dataArray[index].value.asBuffer.buffer == NULL ||
                 dataArray[index].value.asBuffer.length == 0)
                 return COAP_400_BAD_REQUEST;

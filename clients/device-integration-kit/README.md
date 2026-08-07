@@ -59,15 +59,21 @@ prepare → write_chunk → finish_download → install → recover_after_boot
 - Firmware Update 상태 머신과 오류 변환
 - Backend 및 Download Transport 인터페이스
 - Wakaama `/5` v1.2 Adapter
-- Linux 파일 Backend와 테스트
+- Linux 파일 Backend
+- Linux libcoap 기반 비동기 CoAP Pull Transport
+- Block2 chunk를 Service와 staging 파일로 전달하는 E2E 테스트
+- Reference App의 Wakaama/libcoap 통합 이벤트 루프
 
-미구현:
+현재 Linux Reference는 실제 Download Transport를 `/5` Adapter에 연결한다.
 
-- Linux용 실제 CoAP Download Transport
+Linux 구현은 `libcoap-3-notls`, POSIX socket과 epoll을 사용하는 참조 코드다.
+STM32 장치에서는 같은 Download Transport 인터페이스에 장치의 RTOS와
+네트워크 스택을 연결한다.
+
+남은 작업:
+
+- State와 Update Result의 Observe/Notify 연결
+- 전송 실패와 libcoap NACK 처리 보강
 - manifest, hash, signature, anti-rollback 검증
 - 재부팅 결과 영속화
 - 실제 Flash 및 Bootloader 연결
-
-현재 Linux 실행 앱은 Download Transport에 `nullptr`을 전달하므로
-Package URI Write는 `5.01 Not Implemented`를 반환한다.
-Smoke test만 가짜 Transport로 연결을 검증한다.

@@ -6,6 +6,7 @@
 #include <ctime>
 #include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <iostream>
 #include <unistd.h>
 #include <sys/select.h>
@@ -26,6 +27,7 @@ namespace
 ReferenceClientApp::ReferenceClientApp() :
     firmwareBackendContext{}, firmwareBackend{}, firmwareUpdateService{},
     firmwareDownloadTransport{}, firmwareDownloadTransportContext{nullptr},
+    lastNotifiedFirmwareState{FIRMWARE_UPDATE_STATE_IDLE}, lastNotifiedFirmwareResult{FIRMWARE_UPDATE_RESULT_INITIAL},
     clientContext{}, lwm2mContextP{nullptr}, objects{}
 {
     clientContext.securityObjectP = nullptr;
@@ -133,14 +135,62 @@ void ReferenceClientApp::destroyClientObjects()
     }
 }
 
+void ReferenceClientApp::notifyFirmwareResourceChanges()
+{
+    constexpr uint16_t firmwareObjectId = 5;
+    constexpr uint16_t firmwareInstanceId = 0;
+    lwm2m_uri_t resourceUri;
+
+    if (lwm2mContextP == nullptr)
+        return;
+
+    if (firmwareUpdateService.state !=
+        lastNotifiedFirmwareState)
+    {
+        LWM2M_URI_RESET(&resourceUri);
+        resourceUri.objectId = firmwareObjectId;
+        resourceUri.instanceId = firmwareInstanceId;
+        resourceUri.resourceId = 3;
+
+        lwm2m_resource_value_changed(
+            lwm2mContextP,
+            &resourceUri
+        );
+
+        lastNotifiedFirmwareState =
+            firmwareUpdateService.state;
+    }
+
+    if (firmwareUpdateService.update_result !=
+        lastNotifiedFirmwareResult)
+    {
+        LWM2M_URI_RESET(&resourceUri);
+        resourceUri.objectId = firmwareObjectId;
+        resourceUri.instanceId = firmwareInstanceId;
+        resourceUri.resourceId = 5;
+
+        lwm2m_resource_value_changed(
+            lwm2mContextP,
+            &resourceUri
+        );
+
+        lastNotifiedFirmwareResult =
+            firmwareUpdateService.update_result;
+    }
+}
+
 bool ReferenceClientApp::initialize()
 {
     constexpr const char *firmwareStagingPath =
         "/tmp/ota-linux-reference-firmware.bin";
 
+    constexpr const char *firmwareInstallMarkerPath =
+    "/tmp/ota-linux-reference-install.pending";
+
     if (!linux_firmware_update_backend_init(
             &firmwareBackendContext,
             firmwareStagingPath,
+            firmwareInstallMarkerPath,
             &firmwareBackend))
     {
         cerr << "Failed to initialize Linux firmware Backend\n";
@@ -162,6 +212,9 @@ bool ReferenceClientApp::initialize()
         cerr << "Failed to recover firmware update state\n";
         return false;
     }
+
+    lastNotifiedFirmwareState = firmwareUpdateService.state;
+    lastNotifiedFirmwareResult = firmwareUpdateService.update_result;
 
     firmwareDownloadTransportContext =
         linux_coap_download_transport_create(
@@ -252,6 +305,7 @@ int ReferenceClientApp::run()
 
     while (stopRequested == 0)
     {
+        notifyFirmwareResourceChanges();
         std::time_t timeoutSeconds = 60;
         int stepResult = lwm2m_step(lwm2mContextP, &timeoutSeconds);
 
@@ -279,15 +333,49 @@ int ReferenceClientApp::run()
             previousState = lwm2mContextP->state;
         }
 
+        int downloadSocketFd =
+            linux_coap_download_transport_get_socket_fd(
+                firmwareDownloadTransportContext
+            );
+
+        int downloadTimeoutMs =
+            linux_coap_download_transport_get_timeout_ms(
+                firmwareDownloadTransportContext
+            );
+
         fd_set readSet;
         FD_ZERO(&readSet);
         FD_SET(clientContext.socketFd, &readSet);
 
+        int maxSocketFd = clientContext.socketFd;
+
+        if (downloadSocketFd >= 0)
+        {
+            FD_SET(downloadSocketFd, &readSet);
+
+            if (downloadSocketFd > maxSocketFd)
+                maxSocketFd = downloadSocketFd;
+        }
+
+        long waitMilliseconds =
+            static_cast<long>(timeoutSeconds) * 1000L;
+
+        if (waitMilliseconds < 0)
+            waitMilliseconds = 0;
+
+        if (downloadTimeoutMs >= 0 &&
+            downloadTimeoutMs < waitMilliseconds)
+        {
+            waitMilliseconds = downloadTimeoutMs;
+        }
+
         timeval waitTime{};
-        waitTime.tv_sec = timeoutSeconds;
+        waitTime.tv_sec = waitMilliseconds / 1000L;
+        waitTime.tv_usec =
+            (waitMilliseconds % 1000L) * 1000L;
 
         int selectResult = ::select(
-            clientContext.socketFd + 1,
+            maxSocketFd + 1,
             &readSet,
             nullptr,
             nullptr,
@@ -297,18 +385,46 @@ int ReferenceClientApp::run()
         if (selectResult < 0)
         {
             if (errno == EINTR)
-            {
                 continue;
-            }
 
-            cerr << "Failed to wait for UDP packet\n";
+            cerr << "Failed to wait for network event\n";
             return 1;
         }
 
-        if (selectResult == 0)
+        bool downloadSocketReadable =
+            downloadSocketFd >= 0 &&
+            FD_ISSET(downloadSocketFd, &readSet);
+
+        /*
+        * An active Transport is processed on either a socket event
+        * or its periodic timeout.
+        */
+        if (downloadTimeoutMs >= 0 ||
+            downloadSocketReadable)
         {
-            continue;
+            firmware_download_transport_status_t status =
+                linux_coap_download_transport_process(
+                    firmwareDownloadTransportContext,
+                    downloadSocketReadable
+                );
+
+            if (status !=
+                FIRMWARE_DOWNLOAD_TRANSPORT_STATUS_OK)
+            {
+                cerr << "Firmware download transport failed: "
+                    << status << '\n';
+            }
         }
+
+        if (selectResult == 0)
+            continue;
+
+        /*
+        * select() may have returned only for the libcoap fd.
+        * Do not call recvfrom() unless the LwM2M socket is readable.
+        */
+        if (!FD_ISSET(clientContext.socketFd, &readSet))
+            continue;
 
         uint8_t receiveBuffer[LWM2M_COAP_MAX_MESSAGE_SIZE];
         sockaddr_storage senderAddress{};

@@ -9,6 +9,8 @@ int main(void)
 {
     const char *staging_path =
         "/tmp/ota-linux-reference-firmware-backend-test.bin";
+    const char *install_marker_path =
+        "/tmp/ota-linux-reference-firmware-backend-test.pending";
     const uint8_t firmware[] = {0x10, 0x20, 0x30, 0x40};
     uint8_t stored_firmware[sizeof(firmware)];
     linux_firmware_update_backend_context_t backend_context;
@@ -18,11 +20,13 @@ int main(void)
 
     /* Remove a stale test artifact from a previous interrupted run. */
     remove(staging_path);
+    remove(install_marker_path);
 
     assert(
         linux_firmware_update_backend_init(
             &backend_context,
             staging_path,
+            install_marker_path,
             &backend
         )
     );
@@ -85,6 +89,27 @@ int main(void)
     assert(backend_context.install_requested);
     assert(service.state == FIRMWARE_UPDATE_STATE_UPDATING);
 
+    /* Install 요청은 재시작 후에도 남는 파일로 기록되어야 한다. */
+    FILE *marker_file = fopen(install_marker_path, "rb");
+    assert(marker_file != NULL);
+    assert(fclose(marker_file) == 0);
+
+    /*
+    * 프로세스 재시작을 모사한다.
+    * 메모리 context와 Service는 초기화되지만 파일은 유지된다.
+    */
+    linux_firmware_update_backend_deinit(&backend_context);
+
+    assert(
+        linux_firmware_update_backend_init(
+            &backend_context,
+            staging_path,
+            install_marker_path,
+            &backend
+        )
+    );
+    assert(firmware_update_service_init(&service, &backend));
+
     assert(
         firmware_update_service_recover_after_boot(&service) ==
         FIRMWARE_UPDATE_SERVICE_STATUS_OK
@@ -92,8 +117,15 @@ int main(void)
     assert(service.state == FIRMWARE_UPDATE_STATE_IDLE);
     assert(service.update_result == FIRMWARE_UPDATE_RESULT_SUCCESS);
 
+    /*
+    * 성공적으로 부팅이 확정된 package는 staging 영역에서 제거되어야 한다.
+    */
+    staging_file = fopen(staging_path, "rb");
+    assert(staging_file == NULL);
+
     linux_firmware_update_backend_deinit(&backend_context);
     remove(staging_path);
+    remove(install_marker_path);
 
     puts("linux firmware update backend test passed");
     return 0;

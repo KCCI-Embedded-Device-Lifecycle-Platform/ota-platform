@@ -117,16 +117,29 @@ static firmware_backend_status_t prv_install(void *backend_context)
     linux_firmware_update_backend_context_t *context =
         (linux_firmware_update_backend_context_t *)backend_context;
 
+    FILE *marker_file;
+
     if (context == NULL ||
         context->staging_file != NULL ||
         !context->package_ready)
         return FIRMWARE_BACKEND_STATUS_INSTALL_FAILURE;
+    
+    marker_file = fopen(context->install_marker_path, "wb");
 
+    if (marker_file == NULL)
+        return FIRMWARE_BACKEND_STATUS_INSTALL_FAILURE;
+
+    if (fclose(marker_file) != 0)
+    {
+        remove(context->install_marker_path);
+        return FIRMWARE_BACKEND_STATUS_INSTALL_FAILURE;
+    }
+
+    context->install_requested = true;
     /*
      * Linux reference simulates boot target selection and reboot request.
      * A device Backend performs Bootloader metadata update and reboot here.
      */
-    context->install_requested = true;
     return FIRMWARE_BACKEND_STATUS_OK;
 }
 
@@ -139,12 +152,40 @@ static firmware_backend_status_t prv_recover_after_boot(
 
     if (context == NULL || recovery_result == NULL)
         return FIRMWARE_BACKEND_STATUS_INTERNAL_FAILURE;
+    
+    FILE *marker_file;
 
-    if (!context->install_requested)
+    marker_file = fopen(context->install_marker_path, "rb");
+
+    if (marker_file == NULL)
     {
-        *recovery_result = FIRMWARE_BACKEND_RECOVERY_NONE;
-        return FIRMWARE_BACKEND_STATUS_OK;
+        if (errno == ENOENT)
+        {
+            *recovery_result = FIRMWARE_BACKEND_RECOVERY_NONE;
+            return FIRMWARE_BACKEND_STATUS_OK;
+        }
+
+        return FIRMWARE_BACKEND_STATUS_INTERNAL_FAILURE;
     }
+
+    if (fclose(marker_file) != 0)
+        return FIRMWARE_BACKEND_STATUS_INTERNAL_FAILURE;
+
+    /*
+    * 성공한 package를 먼저 정리한다.
+    * 이미 Bootloader가 이동/삭제했을 수 있으므로 ENOENT는 허용한다.
+    */
+    if (remove(context->staging_path) != 0 && errno != ENOENT)
+    {
+        return FIRMWARE_BACKEND_STATUS_INTERNAL_FAILURE;
+    }
+
+    /*
+    * 모든 정리가 끝난 뒤 마커를 제거한다.
+    * 중간 실패 시 다음 부팅에서 recovery를 재시도할 수 있다.
+    */
+    if (remove(context->install_marker_path) != 0)
+        return FIRMWARE_BACKEND_STATUS_INTERNAL_FAILURE;
 
     /*
      * The Linux reference simulates successful boot confirmation.
@@ -188,16 +229,20 @@ static firmware_backend_status_t prv_cancel(void *backend_context)
 bool linux_firmware_update_backend_init(
     linux_firmware_update_backend_context_t *context,
     const char *staging_path,
+    const char *install_marker_path,
     firmware_update_backend_t *backend)
 {
     if (context == NULL ||
         staging_path == NULL ||
         staging_path[0] == '\0' ||
+        install_marker_path == NULL ||
+        install_marker_path[0] == '\0' ||
         backend == NULL)
         return false;
 
     memset(context, 0, sizeof(*context));
     context->staging_path = staging_path;
+    context->install_marker_path = install_marker_path;
 
     backend->context = context;
     backend->prepare = prv_prepare;

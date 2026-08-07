@@ -270,11 +270,10 @@ latest 응답을 확인했다.
 ## 7. 현재 한계와 기술 부채
 
 - server URI, port, test endpoint가 아직 reference client code에 고정됨
-- `/5` Adapter, Update Service, Backend와 Download Transport 인터페이스는 연결됨
-- Linux 실행 앱에는 실제 Download Transport가 없어 Package URI가 `5.01`을 반환
+- Linux Download Transport는 CoAP/UDP Block2만 지원하며 DTLS, timeout, retry 보완이 필요함
 - Linux Backend는 파일 저장과 크기 검증만 지원하며 hash/signature 검증은 없음
-- boot recovery는 메모리 기반 simulation이며 프로세스 재시작 영속화는 없음
-- State와 Update Result 변경에 대한 LwM2M Notify는 아직 연결하지 않음
+- boot recovery는 파일 마커 기반 simulation이며 실제 Bootloader와 전원 중단 복구는 없음
+- Firmware State와 Update Result Notify는 연결됐지만 범용 telemetry Observe는 없음
 - NoSec만 사용
 - Device credential provisioning 없음
 - telemetry는 요청 시 Read하며 Observe/Notify 또는 Send가 아님
@@ -285,10 +284,10 @@ latest 응답을 확인했다.
 - custom Object model을 classpath에서 정적으로만 로드함
 - automated server test와 CTest 등록 없음
 
-## 8. 다음 작업: Milestone 3 Direct Device Firmware Update
+## 8. Milestone 3 Direct Device Firmware Update 구현 결과
 
-DB부터 구현하지 않는다. 먼저 한 장치에서 표준 `/5` OTA protocol이 끝까지
-성립하는지 검증한다. 그래야 DB schema가 실제 OTA 상태를 기준으로 설계된다.
+DB 구현보다 먼저 한 장치에서 표준 `/5` OTA protocol을 끝까지 검증했다.
+다음 절은 이 vertical slice의 구현 과정과 결과를 기록한다.
 
 ### 8.1 Wakaama 예제의 현재 수준
 
@@ -365,30 +364,52 @@ Reference client를 등록한 E2E 검증에서 HTTP `200`과 다음 응답을 �
 
 Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 
-### 8.5 다음 vertical slice: 실제 Package URI 흐름
+### 8.5 Package URI OTA vertical slice 완료
 
-1. Linux Reference용 비동기 CoAP Download Transport 구현
-2. Transport가 Service의 `begin_download`, `write_chunk`, `finish_download` 호출
-3. State와 Update Result 변경을 Wakaama Observe/Notify에 연결
-4. Artifact manifest, hash, signature와 anti-rollback 검증 추가
-5. install 요청과 boot 결과를 프로세스 재시작 후에도 복구하도록 영속화
-6. Spring Server에 최소 OTA trigger API 추가
-7. Package URI부터 Success 또는 실패 Result까지 E2E 검증
+완료한 흐름:
 
-실제 장치에서는 동일한 Transport와 Backend 인터페이스에
-RTOS network stack, Flash, Bootloader, boot confirmation과 rollback 구현을 연결한다.
+1. REST API가 Package URI를 `/5/0/1`로 Write
+2. Linux libcoap Transport가 artifact를 Block2로 다운로드
+3. Service가 firmware를 staging Backend에 기록
+4. State와 Update Result를 Observe/Notify로 보고
+5. REST API가 `/5/0/2` Update Execute
+6. 설치 마커를 파일에 영속화
+7. Client 재시작 후 Success 복구와 staging 정리
+
+검증 결과:
+
+- Invalid URI: State `0`, Update Result `7`
+- 다운로드 완료: State `2`, Update Result `0`
+- Update Execute: State `3`, Update Result `0`
+- 재시작 복구: State `0`, Update Result `1`
+- install marker와 staging 파일 제거 확인
+
+플랫폼 남은 작업:
+
+- artifact metadata/storage와 manifest 배포 계약
+- 서명 형식과 device verification contract
+- Leshan DTLS 및 credential provisioning
+- 보안 실패 Result 매핑과 상호운용 테스트
+
+장치 개발자 통합 범위:
+
+- 실제 hash/signature 검증
+- secure key storage
+- Bootloader anti-rollback
+- boot confirmation과 rollback
 
 ## 9. 이후 작업 순서
 
-1. Milestone 3 direct `/5` OTA vertical slice
-2. Device endpoint와 credential provisioning
+1. Device endpoint와 credential provisioning
+2. Leshan DTLS 및 secure client E2E
 3. PostgreSQL schema와 migration
-4. firmware artifact metadata와 Object Storage adapter
-5. 범용 telemetry ingestion 및 Observe/Notify
-6. Device Profile과 동적 Object model registry
-7. OTA Campaign, 여러 Device 동시성, staged rollout
-8. Admin UI
-9. 독립적인 여러 LwM2M Client 및 Server와 상호운용성 검증
+4. artifact metadata/storage와 manifest 배포 계약
+5. 보안 실패 Result 매핑과 상호운용성 테스트
+6. 범용 telemetry ingestion 및 Observe/Notify
+7. Device Profile과 동적 Object model registry
+8. OTA Campaign과 staged rollout
+9. Admin UI
+10. 독립적인 LwM2M 구현체와 상호운용성 검증
 
 ## 10. Build와 실행
 
@@ -464,7 +485,8 @@ Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현�
 Device Integration Kit의 Adapter, Service, Download Transport와 Backend 경계도
 다시 설계하지 않는다.
 
-다음에는 8.5절의 Linux Reference용 실제 Package URI 흐름을 진행한다.
-가짜 Transport로 검증한 연결을 실제 비동기 CoAP Download Transport로 교체하고,
-State와 Update Result Notify 및 Artifact 보안 검증으로 확장한다.
+Package URI OTA vertical slice는 완료됐다.
+다음에는 Device credential provisioning과 DTLS 적용을 진행한다.
+STM32의 실제 crypto, Flash, Bootloader와 anti-rollback 구현은
+Device Integration Contract에 따라 장치 개발자가 통합한다.
 `/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

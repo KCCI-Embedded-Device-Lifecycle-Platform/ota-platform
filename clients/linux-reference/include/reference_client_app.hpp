@@ -21,6 +21,7 @@ public:
 private:
     bool createClientObjects();
     void destroyClientObjects();
+    void notifyFirmwareResourceChanges();
 
     static constexpr std::size_t SecurityObjectIndex = 0;
     static constexpr std::size_t ServerObjectIndex = 1;
@@ -34,6 +35,9 @@ private:
     firmware_update_service_t firmwareUpdateService;
     firmware_download_transport_t firmwareDownloadTransport;
     linux_coap_download_transport_t *firmwareDownloadTransportContext;
+
+    firmware_update_state_t lastNotifiedFirmwareState;
+    firmware_update_result_t lastNotifiedFirmwareResult;
 
     wakaama_client_context_t clientContext;
     lwm2m_context_t *lwm2mContextP;

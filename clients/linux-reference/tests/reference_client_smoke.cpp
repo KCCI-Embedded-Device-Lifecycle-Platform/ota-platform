@@ -165,6 +165,12 @@ static bool testFirmwareObject(
         packageUriDataP
     );
 
+    /*
+    * TLV does not preserve the semantic String type.
+    * Wakaama decodes the Resource value as OPAQUE bytes.
+    */
+    packageUriDataP->type = LWM2M_TYPE_OPAQUE;
+
     uint8_t packageUriWriteResult = firmwareObjectP->writeFunc(
         nullptr,
         0,
@@ -471,6 +477,7 @@ static void freeClientObjects(lwm2m_object_t *objects[])
 int main()
 {
     constexpr const char *firmwareStagingPath = "/tmp/ota-linux-reference-smoke-firmware.bin";
+    constexpr const char *firmwareInstallMarkerPath = "/tmp/ota-linux-reference-smoke-install.pending";
 
     linux_firmware_update_backend_context_t firmwareBackendContext{};
     firmware_update_backend_t firmwareBackend{};
@@ -479,6 +486,7 @@ int main()
     if (!linux_firmware_update_backend_init(
             &firmwareBackendContext,
             firmwareStagingPath,
+            firmwareInstallMarkerPath,
             &firmwareBackend) ||
         !firmware_update_service_init(
             &firmwareUpdateService,

@@ -1,6 +1,7 @@
 package ota.platform.server.config;
 
 import ota.platform.server.listener.DeviceRegistrationListener;
+import ota.platform.server.listener.FirmwareObservationListener;
 import org.eclipse.leshan.server.LeshanServer;
 import org.eclipse.leshan.server.LeshanServerBuilder;
 import org.eclipse.leshan.transport.californium.server.endpoint.CaliforniumServerEndpointsProvider;
@@ -16,7 +17,10 @@ import org.eclipse.leshan.server.model.StaticModelProvider;
 @Configuration
 public class LeshanServerConfiguration {
     @Bean(initMethod = "start", destroyMethod = "destroy")
-    public LeshanServer leshanServer(DeviceRegistrationListener registrationListener) throws Exception {
+    public LeshanServer leshanServer(
+        DeviceRegistrationListener registrationListener,
+        FirmwareObservationListener observationListener) throws Exception {
+
         List<ObjectModel> models = ObjectLoader.loadDefault();
 
         models.addAll(
@@ -33,9 +37,11 @@ public class LeshanServerConfiguration {
                 .setEndpointsProviders(endpointsProvider)
                 .setObjectModelProvider(new StaticModelProvider(models))
                 .build();
-
-        server.getRegistrationService().addListener(registrationListener);
         
+        registrationListener.setLeshanServer(server);
+        server.getRegistrationService().addListener(registrationListener);
+        server.getObservationService().addListener(observationListener);
+
         return server;
     }
 }

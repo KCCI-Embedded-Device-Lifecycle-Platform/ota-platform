@@ -272,6 +272,9 @@ int main(void)
     const char *staging_path =
         "/tmp/ota-linux-coap-download-transport-e2e.bin";
 
+    const char *install_marker_path =
+    "/tmp/ota-linux-coap-download-transport-e2e.pending";
+
     const uint8_t firmware[] = {
         0x00, 0x01, 0x02, 0x03,
         0x04, 0x05, 0x06, 0x07,
@@ -307,6 +310,7 @@ int main(void)
         linux_firmware_update_backend_init(
             &backend_context,
             staging_path,
+            install_marker_path,
             &backend
         )
     );

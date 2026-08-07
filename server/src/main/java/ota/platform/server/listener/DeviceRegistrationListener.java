@@ -3,6 +3,8 @@ package ota.platform.server.listener;
 import java.util.Collection;
 
 import org.eclipse.leshan.core.observation.Observation;
+import org.eclipse.leshan.core.request.ObserveRequest;
+import org.eclipse.leshan.server.LeshanServer;
 import org.eclipse.leshan.server.registration.Registration;
 import org.eclipse.leshan.server.registration.RegistrationListener;
 import org.eclipse.leshan.server.registration.RegistrationUpdate;
@@ -12,9 +14,43 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class DeviceRegistrationListener implements RegistrationListener {
-    
+
+    private LeshanServer leshanServer;
     private static final Logger logger =
             LoggerFactory.getLogger(DeviceRegistrationListener.class);
+
+    public void setLeshanServer(LeshanServer leshanServer) {
+        this.leshanServer = leshanServer;
+    }
+
+    private void observeFirmwareResource(
+        Registration registration,
+        int resourceId,
+        String resourceName) {
+
+    leshanServer.send(
+            registration,
+            new ObserveRequest(5, 0, resourceId),
+            response -> {
+                if (response.isSuccess()) {
+                    logger.info(
+                            "{} observation established: endpoint={}",
+                            resourceName,
+                            registration.getEndpoint());
+                } else {
+                    logger.warn(
+                            "{} observation rejected: endpoint={}, response={}",
+                            resourceName,
+                            registration.getEndpoint(),
+                            response);
+                }
+            },
+            error -> logger.warn(
+                    "{} observation failed: endpoint={}",
+                    resourceName,
+                    registration.getEndpoint(),
+                    error));
+   }
 
     @Override
     public void registered(
@@ -26,6 +62,9 @@ public class DeviceRegistrationListener implements RegistrationListener {
                 "LwM2M client registered: endpoint={}, address={}",
                 registration.getEndpoint(),
                 registration.getSocketAddress());
+        
+        observeFirmwareResource(registration, 3, "Firmware State");
+        observeFirmwareResource(registration, 5, "Firmware Update Result");
     }
 
     @Override

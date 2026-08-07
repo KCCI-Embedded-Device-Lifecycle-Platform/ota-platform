@@ -13,6 +13,7 @@ extern "C" {
 typedef struct
 {
     const char *staging_path;
+    const char *install_marker_path;
     FILE *staging_file;
     size_t expected_size;
     size_t received_size;
@@ -23,6 +24,7 @@ typedef struct
 bool linux_firmware_update_backend_init(
     linux_firmware_update_backend_context_t *context,
     const char *staging_path,
+    const char *install_marker_path,
     firmware_update_backend_t *backend);
 
 void linux_firmware_update_backend_deinit(
