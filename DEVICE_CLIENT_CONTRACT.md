@@ -21,7 +21,14 @@ reference implementation이며 STM32 제품용 배포 binary가 아니다.
 - OTA 전달 방식: Package URI를 사용하는 Pull 방식
 
 NoSec는 localhost 통합 시험에만 사용한다.
-제품용 DTLS security mode는 STM32 통합 전에 별도로 확정한다.
+
+초기 제품 보안 profile은 장치별 DTLS-PSK로 한다.
+
+- Device마다 고유한 PSK identity와 secret을 발급한다.
+- PSK identity는 Device Registry에서 endpoint와 연결한다.
+- 여러 Device가 secret을 공유하지 않는다.
+- secret은 source code, 설정 파일, log에 기록하지 않고 실행 환경이나 보호된 저장소에서 주입한다.
+- RPK와 X.509 지원은 이후 확장 범위로 둔다.
 
 ### 2.2 Object 범위
 
@@ -80,8 +87,12 @@ endpointName과 credential 발급
 -> Server가 인증 결과를 Device identity와 연결
 ```
 
-현재 Linux reference client는 NoSec와 고정 endpoint만 사용한다.
-Device Registry, credential provisioning, DTLS는 아직 구현되지 않았다.
+Linux reference client는 Wakaama tinyDTLS와 실행 환경에서 주입한 PSK를 사용해
+Leshan Server에 CoAPS로 등록한다. NoSec는 smoke test의 회귀 검증 경로로만 유지한다.
+
+현재 서버는 endpoint와 PSK identity를 InMemorySecurityStore에서 검증한다.
+영구 Device Registry, credential 발급·rotation·revoke, 장치 보호 저장소 연계는
+아직 구현되지 않았다.
 
 ## 4. Firmware Update 책임 경계
 

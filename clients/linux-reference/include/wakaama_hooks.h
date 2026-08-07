@@ -7,21 +7,29 @@
 extern "C" {
 #endif
 
-#include "udp/connection.h"
+#include "tinydtls/connection.h"
 
 #ifdef __cplusplus
 }
 #endif
 
+#ifdef __cplusplus
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
+#endif
+
 typedef struct
 {
+    lwm2m_context_t *lwm2mContextP;
     lwm2m_object_t *securityObjectP;
     int socketFd;
-    lwm2m_connection_t *connectionList;
+    lwm2m_dtls_connection_t *connectionList;
     int addressFamily;
-    const char *serverHost;
-    const char *serverPort;
-
 } wakaama_client_context_t;
 
 

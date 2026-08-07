@@ -397,11 +397,11 @@ static bool testConnectionClose()
 
     wakaama_client_context_t context {};
 
-    lwm2m_connection_t *firstP =
-        static_cast<lwm2m_connection_t *>(lwm2m_malloc(sizeof(lwm2m_connection_t)));
+    lwm2m_dtls_connection_t *firstP =
+        static_cast<lwm2m_dtls_connection_t *>(lwm2m_malloc(sizeof(lwm2m_dtls_connection_t)));
 
-    lwm2m_connection_t *secondP =
-        static_cast<lwm2m_connection_t *>(lwm2m_malloc(sizeof(lwm2m_connection_t)));
+    lwm2m_dtls_connection_t *secondP =
+        static_cast<lwm2m_dtls_connection_t *>(lwm2m_malloc(sizeof(lwm2m_dtls_connection_t)));
 
     if (firstP == nullptr || secondP == nullptr)
     {
@@ -533,12 +533,11 @@ int main()
 
     wakaama_client_context_t clientContext{};
 
+    clientContext.lwm2mContextP = nullptr;
     clientContext.securityObjectP = nullptr;
     clientContext.socketFd = -1;
     clientContext.connectionList = nullptr;
     clientContext.addressFamily = AF_INET;
-    clientContext.serverHost = "127.0.0.1";
-    clientContext.serverPort = "5683";
 
     constexpr const char *clientPort = "56830";
 
@@ -552,34 +551,7 @@ int main()
 
     cout << "UDP socket opened on port " << clientPort << '\n';
 
-    void *sessionH = lwm2m_connect_server(0, &clientContext);
-
-    if (sessionH == nullptr)
-    {
-        cerr << "Failed to create server connection\n";
-        ::close(clientContext.socketFd);
-        return 1;
-    }
-
-    cout  << "UDP connection created for "
-          << clientContext.serverHost << ':'
-          << clientContext.serverPort << '\n';
-
-    lwm2m_close_connection(sessionH, &clientContext);
-
-    if (clientContext.connectionList != nullptr)
-    {
-        cerr << "Failed to close server connection\n";
-
-        lwm2m_connection_free(clientContext.connectionList);
-
-        clientContext.connectionList = nullptr;
-
-        ::close(clientContext.socketFd);
-        return 1;
-    }
-    cout << "UDP connection closed\n";
-
+    
     constexpr int serverId = 123;
     constexpr int lifetime = 300;
     constexpr const char *serverUri = "coap://127.0.0.1:5683";
@@ -606,6 +578,8 @@ int main()
         return 1;
     }
 
+    clientContext.securityObjectP = objects[SECURITY_OBJECT_INDEX];
+
     lwm2m_context_t *lwm2mContextP = lwm2m_init(&clientContext);
     if (lwm2mContextP == nullptr)
     {
@@ -619,7 +593,7 @@ int main()
     }
     cout << "Wakaama context initialized\n";
 
-    clientContext.securityObjectP = objects[SECURITY_OBJECT_INDEX];
+    clientContext.lwm2mContextP = lwm2mContextP;
     lwm2m_object_t *bmsObjectP = objects[BMS_OBJECT_INDEX];
 
     constexpr const char *endpointName = "linux-reference-01";
@@ -797,11 +771,8 @@ int main()
 
     lwm2m_close(lwm2mContextP);
 
-    if (clientContext.connectionList != nullptr)
-    {
-        lwm2m_connection_free(clientContext.connectionList);
-        clientContext.connectionList = nullptr;
-    }
+    lwm2m_connection_free(clientContext.connectionList);
+    clientContext.connectionList = nullptr;
 
     freeClientObjects(objects);
     clientContext.securityObjectP = nullptr;

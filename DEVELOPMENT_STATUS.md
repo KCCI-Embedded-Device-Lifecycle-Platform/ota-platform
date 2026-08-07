@@ -270,12 +270,12 @@ latest 응답을 확인했다.
 ## 7. 현재 한계와 기술 부채
 
 - server URI, port, test endpoint가 아직 reference client code에 고정됨
-- Linux Download Transport는 CoAP/UDP Block2만 지원하며 DTLS, timeout, retry 보완이 필요함
+- Artifact data plane의 Linux Download Transport는 CoAP/UDP Block2만 지원하며 CoAPS, timeout, retry 보완이 필요함
 - Linux Backend는 파일 저장과 크기 검증만 지원하며 hash/signature 검증은 없음
 - boot recovery는 파일 마커 기반 simulation이며 실제 Bootloader와 전원 중단 복구는 없음
 - Firmware State와 Update Result Notify는 연결됐지만 범용 telemetry Observe는 없음
-- NoSec만 사용
-- Device credential provisioning 없음
+- LwM2M control plane은 DTLS-PSK를 지원하며 NoSec는 smoke test에만 유지함
+- credential은 실행 환경과 InMemorySecurityStore로 주입하며 영구 Registry, rotation, revoke는 없음
 - telemetry는 요청 시 Read하며 Observe/Notify 또는 Send가 아님
 - BMS 전용 Controller와 in-memory latest store만 있음
 - PostgreSQL dependency, schema, migration 없음
@@ -388,7 +388,7 @@ Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 
 - artifact metadata/storage와 manifest 배포 계약
 - 서명 형식과 device verification contract
-- Leshan DTLS 및 credential provisioning
+- 영구 Device Registry와 credential 발급, rotation, revoke
 - 보안 실패 Result 매핑과 상호운용 테스트
 
 장치 개발자 통합 범위:
@@ -398,18 +398,43 @@ Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 - Bootloader anti-rollback
 - boot confirmation과 rollback
 
+### 8.6 DTLS-PSK secure client E2E 완료
+
+구현 결과:
+
+- Leshan Server가 CoAP `5683`과 CoAPS `5684` endpoint를 함께 제공
+- endpoint, PSK identity, key를 SecurityStore에 연결
+- Linux reference client가 Wakaama tinyDTLS transport 사용
+- PSK identity와 key는 실행 환경에서 주입
+- `/0` Server URI를 `coaps://127.0.0.1:5684`로 구성
+- NoSec 경로는 smoke test 회귀 검증용으로 유지
+- tinyDTLS 재핸드셰이크의 양수 성공 반환값 처리 수정
+
+검증 결과:
+
+- 올바른 PSK에서 Registration과 `/5/0/3`, `/5/0/5` Observe 성공
+- 잘못된 PSK에서는 Client가 READY로 전환되지 않고 Server 등록도 거부
+- DTLS 경로의 Firmware Status Read 성공
+- Package URI Write와 State/Update Result Notify가 DTLS로 동작
+- 40초 이후 재핸드셰이크와 firmware 다운로드 완료 확인
+
+현재 경계:
+
+- LwM2M control plane은 DTLS-PSK 적용 완료
+- Artifact data plane은 아직 NoSec CoAP
+- 영구 Device Registry와 credential 발급, rotation, revoke는 미구현
+
 ## 9. 이후 작업 순서
 
-1. Device endpoint와 credential provisioning
-2. Leshan DTLS 및 secure client E2E
-3. PostgreSQL schema와 migration
-4. artifact metadata/storage와 manifest 배포 계약
-5. 보안 실패 Result 매핑과 상호운용성 테스트
-6. 범용 telemetry ingestion 및 Observe/Notify
-7. Device Profile과 동적 Object model registry
-8. OTA Campaign과 staged rollout
-9. Admin UI
-10. 독립적인 LwM2M 구현체와 상호운용성 검증
+1. PostgreSQL schema와 migration
+2. 영구 Device Registry와 credential lifecycle
+3. artifact metadata/storage와 manifest 배포 계약
+4. 보안 실패 Result 매핑과 상호운용성 테스트
+5. 범용 telemetry ingestion 및 Observe/Notify
+6. Device Profile과 동적 Object model registry
+7. OTA Campaign과 staged rollout
+8. Admin UI
+9. 독립적인 LwM2M 구현체와 상호운용성 검증
 
 ## 10. Build와 실행
 
@@ -417,8 +442,12 @@ Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 
 ```bash
 cmake -S clients/linux-reference -B /tmp/ota-linux-reference-client-build
-cmake --build /tmp/ota-linux-reference-client-build --target ota_linux_reference_client
-cmake --build /tmp/ota-linux-reference-client-build --target ota_linux_reference_client_smoke
+cmake --build /tmp/ota-linux-reference-client-build -j2
+
+/tmp/ota-linux-reference-client-build/ota_linux_reference_client_smoke
+
+OTA_LWM2M_PSK_IDENTITY=linux-reference-01 \
+OTA_LWM2M_PSK_KEY_HEX=00112233445566778899aabbccddeeff \
 /tmp/ota-linux-reference-client-build/ota_linux_reference_client
 ```
 
@@ -426,35 +455,32 @@ cmake --build /tmp/ota-linux-reference-client-build --target ota_linux_reference
 
 ```bash
 cd server
-mvn clean package
-mvn spring-boot:run
+mvn -o package
+
+OTA_LWM2M_PSK_ENDPOINT=linux-reference-01 \
+OTA_LWM2M_PSK_IDENTITY=linux-reference-01 \
+OTA_LWM2M_PSK_KEY_HEX=00112233445566778899aabbccddeeff \
+java -jar target/ota-server-0.0.1-SNAPSHOT.jar
 ```
 
-현재 NoSec reference client 실행에는 `127.0.0.1:5683`에서 Leshan Server가
-실행 중이어야 한다.
+Linux reference client는 CoAPS `5684`와 실행 환경의 DTLS-PSK를 사용한다.
+Smoke test는 회귀 검증을 위해 NoSec CoAP `5683`을 사용한다.
+문서의 PSK는 localhost 개발 검증 전용이며 제품 credential로 사용하지 않는다.
 
 ## 11. 현재 회귀 검증 기준
 
-- `ota_linux_reference_client`와 `ota_linux_reference_client_smoke` build
-- Spring server package build
-- UDP `5683` listen
-- reference Device의 Registration과 READY 전환
-- `/33000/0/0`이 Float `12.7`로 decode
-- HTTP current/latest API 응답
-- Client 종료 후 Deregistration와 server unregister event
-
-`/5` v1.2 wiring에서 다음을 확인했다.
-
-- Server가 OMA 공식 `/5` v1.2 DDF를 로드
-- Registration에 `</5>;ver=1.2,</5/0>` 포함
-- State `/5/0/3`과 Update Result `/5/0/5` local Read
-- Protocol Support `/5/0/8`이 Multiple Resource `[0]`으로 decode
-- Delivery Method `/5/0/9`가 Pull only `0`으로 decode
-- Firmware Object version과 Resource의 local smoke test
-- capability API HTTP `200`
-- status API HTTP `200`, State `0`, Update Result `0`
-- `/5` cleanup과 Client 정상 Deregistration
-
+- Linux reference client와 smoke test build
+- Spring Server package build
+- Server의 CoAP `5683`, CoAPS `5684` listen
+- NoSec smoke test Registration 응답
+- 올바른 PSK에서 DTLS Registration과 READY 전환
+- 잘못된 PSK에서 Registration 거부
+- `/5/0/3`, `/5/0/5` DTLS Observe 연결
+- Firmware Status API 응답
+- Package URI 다운로드 후 State `2`, Update Result `0`
+- staging file과 artifact의 `cmp` 일치
+- 40초 이후 DTLS 재핸드셰이크
+- Client 종료 후 정상 Deregistration
 
 ## 12. 새 세션 시작 지침
 
@@ -486,7 +512,7 @@ Device Integration Kit의 Adapter, Service, Download Transport와 Backend 경계
 다시 설계하지 않는다.
 
 Package URI OTA vertical slice는 완료됐다.
-다음에는 Device credential provisioning과 DTLS 적용을 진행한다.
+다음에는 PostgreSQL schema와 영구 Device Registry를 진행한다.
 STM32의 실제 crypto, Flash, Bootloader와 anti-rollback 구현은
 Device Integration Contract에 따라 장치 개발자가 통합한다.
 `/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

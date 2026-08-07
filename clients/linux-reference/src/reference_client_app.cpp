@@ -11,6 +11,10 @@
 #include <unistd.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <cstdint>
+#include <vector>
+#include <cstdlib>
+#include <limits>
 
 using namespace std;
 
@@ -21,6 +25,59 @@ namespace
     void requestStop(int)
     {
         stopRequested = 1;
+    }
+
+    int hexDigitValue(char value)
+    {
+        if (value >= '0' && value <= '9')
+            return value - '0';
+
+        if (value >= 'a' && value <= 'f')
+            return value - 'a' + 10;
+
+        if (value >= 'A' && value <= 'F')
+            return value - 'A' + 10;
+
+        return -1;
+    }
+
+    bool parseHexKey(
+        const char *keyHex,
+        std::vector<std::uint8_t> &key)
+    {
+        key.clear();
+
+        if (keyHex == nullptr)
+            return false;
+
+        std::size_t length = std::strlen(keyHex);
+
+        if (length == 0 || length % 2 != 0)
+            return false;
+
+        key.reserve(length / 2);
+
+        for (std::size_t index = 0;
+            index < length;
+            index += 2)
+        {
+            int high = hexDigitValue(keyHex[index]);
+            int low = hexDigitValue(keyHex[index + 1]);
+
+            if (high < 0 || low < 0)
+            {
+                key.clear();
+                return false;
+            }
+
+            key.push_back(
+                static_cast<std::uint8_t>(
+                    (high << 4) | low
+                )
+            );
+        }
+
+        return true;
     }
 }
 
@@ -34,8 +91,6 @@ ReferenceClientApp::ReferenceClientApp() :
     clientContext.socketFd = -1;
     clientContext.connectionList = nullptr;
     clientContext.addressFamily = AF_INET;
-    clientContext.serverHost = "127.0.0.1";
-    clientContext.serverPort = "5683";
 }
 
 ReferenceClientApp::~ReferenceClientApp()
@@ -44,13 +99,11 @@ ReferenceClientApp::~ReferenceClientApp()
     {
         lwm2m_close(lwm2mContextP);
         lwm2mContextP = nullptr;
+        clientContext.lwm2mContextP = nullptr;
     }
 
-    if (clientContext.connectionList != nullptr)
-    {
-        lwm2m_connection_free(clientContext.connectionList);
-        clientContext.connectionList = nullptr;
-    }
+    lwm2m_connection_free(clientContext.connectionList);
+    clientContext.connectionList = nullptr;
 
     destroyClientObjects();
     if (firmwareDownloadTransportContext != nullptr)
@@ -73,10 +126,30 @@ bool ReferenceClientApp::createClientObjects()
 {
     constexpr int serverId = 123;
     constexpr int lifetime = 300;
-    constexpr const char *serverUri = "coap://127.0.0.1:5683";
+    constexpr const char *serverUri = "coaps://127.0.0.1:5684";
     constexpr const char *binding = "U";
 
-    objects[SecurityObjectIndex] = get_security_object(serverId, serverUri, nullptr, nullptr, 0, false);
+    char *pskIdentity = std::getenv("OTA_LWM2M_PSK_IDENTITY");
+    const char *pskKeyHex = std::getenv("OTA_LWM2M_PSK_KEY_HEX");
+
+    if (pskIdentity == nullptr || pskIdentity[0] == '\0' ||
+        pskKeyHex == nullptr || pskKeyHex[0] == '\0')
+    {
+        cerr << "DTLS-PSK environment is incomplete\n";
+        return false;
+    }
+
+    std::vector<std::uint8_t> pskKey;
+
+    if (!parseHexKey(pskKeyHex, pskKey) ||
+        pskKey.size() >
+            std::numeric_limits<std::uint16_t>::max())
+    {
+        cerr << "DTLS-PSK key is invalid\n";
+        return false;
+    }
+
+    objects[SecurityObjectIndex] = get_security_object(serverId, serverUri, pskIdentity, reinterpret_cast<char *>(pskKey.data()), static_cast<std::uint16_t>(pskKey.size()), false);
     objects[ServerObjectIndex] = get_server_object(serverId, binding, lifetime, false);
     objects[DeviceObjectIndex] = get_object_device();
     objects[FirmwareObjectIndex] = get_firmware_update_object(&firmwareUpdateService, &firmwareDownloadTransport);
@@ -252,7 +325,8 @@ bool ReferenceClientApp::initialize()
         return false;
     }
     cout << "Wakaama context initialized\n";
-
+    
+    clientContext.lwm2mContextP = lwm2mContextP;
     constexpr const char *endpointName = "linux-reference-01";
 
     int configureResult = lwm2m_configure(
@@ -456,7 +530,7 @@ int ReferenceClientApp::run()
             continue;
         }
 
-        lwm2m_connection_t *connectionP = lwm2m_connection_find(
+        lwm2m_dtls_connection_t *connectionP = lwm2m_connection_find(
             clientContext.connectionList,
             &senderAddress,
             senderAddressLength
@@ -468,12 +542,18 @@ int ReferenceClientApp::run()
             continue;
         }
 
-        lwm2m_handle_packet(
-            lwm2mContextP,
-            receiveBuffer,
-            static_cast<std::size_t>(receivedBytes),
-            connectionP
-        );
+        int handleResult =
+            lwm2m_connection_handle_packet(
+                connectionP,
+                receiveBuffer,
+                static_cast<std::size_t>(receivedBytes)
+            );
+
+        if (handleResult != 0)
+        {
+            cerr << "Failed to handle DTLS packet: "
+                << handleResult << '\n';
+        }
     }
 
     cout << "Reference client shutdown requested\n";

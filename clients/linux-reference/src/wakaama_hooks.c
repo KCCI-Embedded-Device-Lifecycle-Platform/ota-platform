@@ -4,17 +4,16 @@ int g_reboot = 0;
 void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
 {
     wakaama_client_context_t *contextP;
-    lwm2m_connection_t *connectionP;
+    lwm2m_dtls_connection_t *connectionP;
 
     contextP = (wakaama_client_context_t *)userData;
-
-    (void)securityInstanceId;
 
     if (contextP == NULL)
         return NULL;
 
-    if (contextP->socketFd < 0 || contextP->serverHost == NULL ||
-        contextP->serverPort == NULL)
+    if (contextP->socketFd < 0 ||
+    contextP->securityObjectP == NULL ||
+    contextP->lwm2mContextP == NULL)
     {
         return NULL;
     }
@@ -22,8 +21,9 @@ void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
     connectionP = lwm2m_connection_create(
         contextP->connectionList,
         contextP->socketFd,
-        (char *)contextP->serverHost,
-        (char *)contextP->serverPort,
+        contextP->securityObjectP,
+        securityInstanceId,
+        contextP->lwm2mContextP,
         contextP->addressFamily
     );
 
@@ -38,11 +38,11 @@ void *lwm2m_connect_server(uint16_t securityInstanceId, void *userData)
 void lwm2m_close_connection(void *sessionH, void *userData)
 {
     wakaama_client_context_t *contextP;
-    lwm2m_connection_t *targetP;
-    lwm2m_connection_t *parentP;
+    lwm2m_dtls_connection_t *targetP;
+    lwm2m_dtls_connection_t *parentP;
 
     contextP = (wakaama_client_context_t *)userData;
-    targetP = (lwm2m_connection_t *)sessionH;
+    targetP = (lwm2m_dtls_connection_t *)sessionH;
 
     if (contextP == NULL || targetP == NULL)
         return;
