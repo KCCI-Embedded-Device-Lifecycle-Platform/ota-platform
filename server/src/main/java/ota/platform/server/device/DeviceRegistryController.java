@@ -18,67 +18,65 @@ import org.springframework.web.bind.annotation.PathVariable;
 @RequestMapping("/api/devices")
 public class DeviceRegistryController {
 
-    private final DeviceRepository deviceRepository;
+        private final DeviceRepository deviceRepository;
 
-    public DeviceRegistryController(
-            DeviceRepository deviceRepository) {
-        this.deviceRepository = deviceRepository;
-    }
-
-    @PostMapping
-    public ResponseEntity<?> createDevice(
-            @RequestBody CreateDeviceRequest request) {
-
-        String endpoint = request.endpoint();
-
-        if (endpoint == null ||
-            endpoint.isBlank() ||
-            !endpoint.equals(endpoint.trim()) ||
-            endpoint.length() > 255) {
-
-            return ResponseEntity.badRequest().body(
-                    Map.of(
-                            "error",
-                            "endpoint is invalid"));
+        public DeviceRegistryController(
+                        DeviceRepository deviceRepository) {
+                this.deviceRepository = deviceRepository;
         }
 
-        String displayName = request.displayName();
+        @PostMapping
+        public ResponseEntity<?> createDevice(
+                        @RequestBody CreateDeviceRequest request) {
 
-        if (displayName != null &&
-            displayName.length() > 255) {
+                String endpoint = request.endpoint();
 
-            return ResponseEntity.badRequest().body(
-                    Map.of(
-                            "error",
-                            "displayName is too long"));
+                if (endpoint == null ||
+                                endpoint.isBlank() ||
+                                !endpoint.equals(endpoint.trim()) ||
+                                endpoint.length() > 255) {
+
+                        return ResponseEntity.badRequest().body(
+                                        Map.of(
+                                                        "error",
+                                                        "endpoint is invalid"));
+                }
+
+                String displayName = request.displayName();
+
+                if (displayName != null &&
+                                displayName.length() > 255) {
+
+                        return ResponseEntity.badRequest().body(
+                                        Map.of(
+                                                        "error",
+                                                        "displayName is too long"));
+                }
+
+                if (displayName != null &&
+                                displayName.isBlank()) {
+                        displayName = null;
+                }
+
+                Device device = deviceRepository.create(
+                                endpoint,
+                                displayName);
+
+                return ResponseEntity
+                                .status(HttpStatus.CREATED)
+                                .body(device);
         }
-
-        if (displayName != null &&
-            displayName.isBlank()) {
-            displayName = null;
-        }
-
-        Device device =
-                deviceRepository.create(
-                        endpoint,
-                        displayName);
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(device);
-    }
 
         @GetMapping("/{endpoint}")
         public ResponseEntity<Device> getDevice(
-                @PathVariable String endpoint) {
+                        @PathVariable String endpoint) {
 
                 return deviceRepository
-                        .findByEndpoint(endpoint)
-                        .map(ResponseEntity::ok)
-                        .orElseGet(() ->
-                                ResponseEntity
-                                        .notFound()
-                                        .build());
+                                .findByEndpoint(endpoint)
+                                .map(ResponseEntity::ok)
+                                .orElseGet(() -> ResponseEntity
+                                                .notFound()
+                                                .build());
         }
 
         @GetMapping
@@ -86,13 +84,12 @@ public class DeviceRegistryController {
                 return deviceRepository.findAll();
         }
 
-
         @ExceptionHandler(DuplicateKeyException.class)
         public ResponseEntity<?> handleDuplicateEndpoint() {
                 return ResponseEntity
-                        .status(HttpStatus.CONFLICT)
-                        .body(Map.of(
-                                "error",
-                                "endpoint already exists"));
+                                .status(HttpStatus.CONFLICT)
+                                .body(Map.of(
+                                                "error",
+                                                "endpoint already exists"));
         }
 }

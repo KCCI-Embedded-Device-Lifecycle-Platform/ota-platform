@@ -1,6 +1,6 @@
 # Development Status
 
-Last updated: 2026-07-20
+Last updated: 2026-08-10
 
 이 문서는 새 개발 세션이 현재 작업 지점부터 바로 이어갈 수 있도록 관리하는
 인수인계 문서다. 전체 시스템 구조와 장기 결정은
@@ -78,9 +78,10 @@ connection 목록이므로 그대로 필요하다.
 
 - C++20 application + Eclipse Wakaama C library
 - Wakaama snapshot: `94ff56f77a2d24a5890e0e703809a47633aa7d4b`
-- Transport: POSIX UDP
-- 개발 보안: NoSec `coap://`
-- Server address: `127.0.0.1:5683`
+- LwM2M control plane: Wakaama tinyDTLS over POSIX UDP
+- DTLS Server address: `127.0.0.1:5684`
+- NoSec `5683`: smoke test 회귀 검증 전용
+- PSK identity와 key: 실행 환경에서 주입
 - Local UDP port: `56830`
 - Short Server ID: `123`
 - Lifetime: `300` seconds
@@ -99,13 +100,23 @@ Wakaama는 현재 reference client 구현이다. 최종적으로 모든 MCU/Linu
 배포 binary가 아니다. 플랫폼과 장치 개발자의 책임 경계는
 `ARCHITECTURE.md` 5.4절을 따른다.
 
-### Persistence and artifacts
+Wakaama–tinyDTLS 통합부에서 재핸드셰이크 반환값 처리와 connection 정리 시
+dangling pointer 및 `dtlsSession` 누수를 수정했다. Credential 강제 폐기와
+일반 종료 모두 세그멘테이션 오류 없이 정리되는 것을 확인했다.
 
-- 제품 persistence DB: PostgreSQL 18 방향 결정
-- `server/compose.yaml`: PostgreSQL 18 개발 환경 초안, application 미연동
-- JDBC/JPA 또는 migration dependency와 schema: 아직 없음
-- Firmware binary storage: local filesystem부터 시작 가능, adapter 미구현
-- Object Storage 제품 선택: 아직 없음
+### Persistence and artifacts
+- PostgreSQL 18 개발 환경을 `server/compose.yaml`로 실행
+- Spring JDBC와 Flyway PostgreSQL 연동 완료
+- `V1__create_devices.sql`: Device Registry schema
+- `V2__create_device_credentials.sql`: PSK credential metadata와 lifecycle schema
+- Device 등록, 단건 조회, 목록 조회 API 구현
+- credential 생성, 조회, revoke, rotation API 구현
+- credential 생성과 rotation은 실행 중 SecurityStore에 즉시 반영
+- revoke와 rotation은 기존 DTLS session을 즉시 종료
+- PostgreSQL에는 secret 원문이 아닌 `secret_reference`만 저장
+- 현재 개발 secret provider는 `env:` 환경변수 참조만 지원
+- 제품 secret store와 Admin API 인증 및 audit는 아직 미구현
+- Firmware binary storage는 local filesystem 기반이며 Object Storage adapter는 미구현
 - CDN: 현재 milestone에 사용하지 않음
 
 ## 4. 현재 저장소 구조
@@ -269,20 +280,18 @@ latest 응답을 확인했다.
 
 ## 7. 현재 한계와 기술 부채
 
-- server URI, port, test endpoint가 아직 reference client code에 고정됨
-- Artifact data plane의 Linux Download Transport는 CoAP/UDP Block2만 지원하며 CoAPS, timeout, retry 보완이 필요함
-- Linux Backend는 파일 저장과 크기 검증만 지원하며 hash/signature 검증은 없음
-- boot recovery는 파일 마커 기반 simulation이며 실제 Bootloader와 전원 중단 복구는 없음
-- Firmware State와 Update Result Notify는 연결됐지만 범용 telemetry Observe는 없음
-- LwM2M control plane은 DTLS-PSK를 지원하며 NoSec는 smoke test에만 유지함
-- credential은 실행 환경과 InMemorySecurityStore로 주입하며 영구 Registry, rotation, revoke는 없음
-- telemetry는 요청 시 Read하며 Observe/Notify 또는 Send가 아님
-- BMS 전용 Controller와 in-memory latest store만 있음
-- PostgreSQL dependency, schema, migration 없음
-- firmware binary storage adapter 없음
-- 사용자, Device ownership, Device Profile, OTA Campaign model 없음
-- custom Object model을 classpath에서 정적으로만 로드함
-- automated server test와 CTest 등록 없음
+- Reference Client의 endpoint, Server URI와 port가 아직 code에 고정됨
+- Artifact data plane은 NoSec CoAP Block2이며 CoAPS, 인증, retry 정책이 없음
+- Linux Backend는 reference simulation이며 실제 hash/signature와 Bootloader 검증은 장치 통합 범위임
+- boot recovery는 파일 marker 기반 simulation임
+- credential secret은 임시 `env:` provider를 사용하며 제품용 secret store는 없음
+- credential 관리 API에 Admin 인증, 권한과 audit log가 없음
+- DB와 실행 중 SecurityStore 사이의 장애 복구 및 재동기화 절차가 없음
+- Device ownership, disable/delete lifecycle과 사용자 model이 없음
+- telemetry는 범용 ingestion/history 구조가 아니며 BMS 중심 임시 구현임
+- Firmware artifact metadata와 Object Storage adapter가 없음
+- custom Object model은 classpath에서 정적으로 로드됨
+- automated server integration test와 전체 CTest 등록이 없음
 
 ## 8. Milestone 3 Direct Device Firmware Update 구현 결과
 
@@ -421,16 +430,41 @@ Client 종료 후 `expired=false`인 정상 Deregistration도 확인했다.
 현재 경계:
 
 - LwM2M control plane은 DTLS-PSK 적용 완료
+- Device와 credential metadata 및 create/revoke/rotation은 PostgreSQL에 영속화
+- 실제 PSK 값은 임시 환경변수 provider를 사용하며 제품 secret store는 미구현
 - Artifact data plane은 아직 NoSec CoAP
-- 영구 Device Registry와 credential 발급, rotation, revoke는 미구현
+
+### 8.7 PostgreSQL Device Registry와 PSK lifecycle 구현 완료
+
+구현 결과:
+
+- PostgreSQL 18, Spring JDBC, Flyway 연동
+- `devices`와 `device_credentials` schema 및 migration 적용
+- endpoint 중복과 공백 입력 방지
+- Device 생성, 단건 조회, 목록 조회 API 구현
+- PSK secret 원문 대신 `secret_reference`만 DB에 저장
+- DB의 ACTIVE credential을 시작 시 Leshan SecurityStore에 로드
+- 여러 Device credential을 하나의 서버 process에서 관리
+- 실행 중 credential 생성, revoke, rotation 반영
+- revoke와 rotation에서 기존 DTLS session 즉시 종료
+- credential 이력을 `ACTIVE`, `ROTATED`, `REVOKED` 상태로 보존
+
+Credential API:
+
+```text
+GET  /api/devices/{endpoint}/credentials/psk
+POST /api/devices/{endpoint}/credentials/psk
+POST /api/devices/{endpoint}/credentials/psk/revoke
+POST /api/devices/{endpoint}/credentials/psk/rotate
+
 
 ## 9. 이후 작업 순서
 
-1. PostgreSQL schema와 migration
-2. 영구 Device Registry와 credential lifecycle
-3. artifact metadata/storage와 manifest 배포 계약
-4. 보안 실패 Result 매핑과 상호운용성 테스트
-5. 범용 telemetry ingestion 및 Observe/Notify
+1. Firmware artifact metadata와 storage adapter
+2. Manifest 배포 계약과 보안 실패 Result mapping
+3. 제품 secret store, credential provisioning, Admin 인증과 audit
+4. 범용 telemetry ingestion 및 Observe/Notify
+5. Device ownership과 사용자 model
 6. Device Profile과 동적 Object model registry
 7. OTA Campaign과 staged rollout
 8. Admin UI

@@ -39,7 +39,7 @@ void lwm2m_close_connection(void *sessionH, void *userData)
 {
     wakaama_client_context_t *contextP;
     lwm2m_dtls_connection_t *targetP;
-    lwm2m_dtls_connection_t *parentP;
+    //lwm2m_dtls_connection_t *parentP;
 
     contextP = (wakaama_client_context_t *)userData;
     targetP = (lwm2m_dtls_connection_t *)sessionH;
@@ -50,20 +50,33 @@ void lwm2m_close_connection(void *sessionH, void *userData)
     if (targetP == contextP->connectionList)
     {
         contextP->connectionList = targetP->next;
-        lwm2m_free(targetP);
-        return;
     }
-
-    parentP = contextP->connectionList;
-
-    while (parentP != NULL && parentP->next != targetP)
+    else
     {
-        parentP = parentP->next;
+        lwm2m_dtls_connection_t *parentP = contextP->connectionList;
+
+        while (parentP != NULL &&
+               parentP->next != targetP)
+        {
+            parentP = parentP->next;
+        }
+
+        if (parentP == NULL)
+            return;
+
+        parentP->next = targetP->next;
     }
 
-    if (parentP == NULL)
-        return;
+    /*
+     * tinyDTLS callbacks must not retain a pointer
+     * to the connection that is about to be freed.
+     */
+    lwm2m_connection_set_list(contextP->connectionList);
 
-    parentP->next = targetP->next;
+    if (targetP->dtlsSession != NULL)
+    {
+        lwm2m_free(targetP->dtlsSession);
+        targetP->dtlsSession = NULL;
+    }
     lwm2m_free(targetP);
 }
