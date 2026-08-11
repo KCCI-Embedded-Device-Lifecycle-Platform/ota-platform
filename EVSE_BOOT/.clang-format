@@ -1,0 +1,29 @@
+BasedOnStyle: LLVM
+
+UseTab: Never
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+
+SortIncludes: false
+BreakBeforeBraces: Attach
+IndentCaseLabels: true
+RemoveBracesLLVM: true
+
+AllowShortEnumsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Always
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+
+BinPackArguments: false
+AllowAllArgumentsOnNextLine: false
+Cpp11BracedListStyle: true
+
+BinPackLongBracedList: false
+
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+

@@ -1,0 +1,14 @@
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:63:12:esp01_at_wait	288	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:102:12:esp01_at_command	40	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:152:12:esp01_join_wifi	184	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:188:13:esp01_udp_smoke_test	8	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:255:34:backend_prepare	16	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:264:34:backend_write_chunk	24	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:277:34:backend_finish_download	16	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:283:34:backend_install	16	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:289:34:backend_cancel	16	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:295:34:backend_recover_after_boot	16	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:308:5:__io_putchar	24	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:326:5:main	48	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:402:6:SystemClock_Config	88	static
+/srv/samba/ota-platform/clients/f429zi-reference/Core/Src/main.c:451:6:Error_Handler	4	static

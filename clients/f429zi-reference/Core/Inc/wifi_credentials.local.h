@@ -1,0 +1,7 @@
+#ifndef WIFI_CREDENTIALS_LOCAL_H
+#define WIFI_CREDENTIALS_LOCAL_H
+
+#define WIFI_SSID     "KCCI601"
+#define WIFI_PASSWORD "@kcci601@"
+
+#endif

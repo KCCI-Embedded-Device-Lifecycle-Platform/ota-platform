@@ -1,0 +1,12 @@
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:3:33:prv_map_backend_status	16	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:31:6:firmware_update_service_init	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:56:34:firmware_update_service_begin_download	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:86:34:firmware_update_service_write_chunk	40	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:118:34:firmware_update_service_finish_download	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:146:34:firmware_update_service_install	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:175:34:firmware_update_service_recover_after_boot	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:220:34:firmware_update_service_cancel	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:249:34:firmware_update_service_fail_download	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:308:34:firmware_update_service_set_severity	16	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:328:34:firmware_update_service_set_maximum_defer_period	24	static
+/srv/samba/ota-platform/clients/device-integration-kit/src/firmware_update_service.c:339:34:firmware_update_service_defer	16	static

@@ -456,7 +456,7 @@ GET  /api/devices/{endpoint}/credentials/psk
 POST /api/devices/{endpoint}/credentials/psk
 POST /api/devices/{endpoint}/credentials/psk/revoke
 POST /api/devices/{endpoint}/credentials/psk/rotate
-
+```
 
 ## 9. 이후 작업 순서
 
