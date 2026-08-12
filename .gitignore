@@ -1,0 +1,11 @@
+server/target/
+
+clients/f429zi-reference/Core/Inc/wifi_credentials.local.h
+
+clients/f429zi-reference/build/
+
+__pycache__/
+*.pyc
+
+__pycache__/
+*.pyc

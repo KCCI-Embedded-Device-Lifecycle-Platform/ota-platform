@@ -458,6 +458,30 @@ POST /api/devices/{endpoint}/credentials/psk/revoke
 POST /api/devices/{endpoint}/credentials/psk/rotate
 ```
 
+### 8.8 STM32F429ZI 실제 OTA E2E reference 완료
+
+구현 결과:
+
+- Nucleo-F429ZI에서 Wakaama와 Device Integration Kit 실행
+- ESP-01 AT firmware를 통한 LwM2M Registration과 CoAP Block2 download
+- bank2 staging 영역에 firmware를 streaming write하고 CRC32 검증
+- Update Execute 응답 이후 지연 reset
+- Backup SRAM metadata를 EVSE_BOOT에 전달
+- EVSE_BOOT가 staging 이미지를 application 영역에 복사하고 vector/CRC 검증
+- 새 application이 Update Result `1`을 보고
+
+실기 검증 결과:
+
+- `0.1.0`에서 `0.2.0`으로 OTA 성공
+- Package URI 요청 `202`, 다운로드 완료 State `2`
+- Update Execute `202`
+- 재등록 후 State `0`, Update Result `1`
+- SWD readback과 배포 BIN의 byte 비교 및 SHA-256 일치
+
+현재 구현은 E2E reference 범위다. CRC32는 전송 무결성 확인이며 제품용
+signature가 아니다. DTLS, signed manifest, anti-rollback과 전원 차단
+rollback은 장치 제품 통합 단계의 남은 항목이다.
+
 ## 9. 이후 작업 순서
 
 1. Firmware artifact metadata와 storage adapter
@@ -515,6 +539,9 @@ Smoke test는 회귀 검증을 위해 NoSec CoAP `5683`을 사용한다.
 - staging file과 artifact의 `cmp` 일치
 - 40초 이후 DTLS 재핸드셰이크
 - Client 종료 후 정상 Deregistration
+- F429ZI Package URI Block2 download와 State `2`
+- F429ZI EVSE_BOOT 적용 후 Update Result `1`
+- F429ZI application flash readback과 artifact byte 일치
 
 ## 12. 새 세션 시작 지침
 
@@ -534,6 +561,7 @@ Smoke test는 회귀 검증을 위해 NoSec CoAP `5683`을 사용한다.
 - `clients/linux-reference/include/reference_client_app.hpp`
 - `clients/linux-reference/src/reference_client_app.cpp`
 - `clients/linux-reference/CMakeLists.txt`
+- `clients/f429zi-reference/README.md`
 - `experiments/wakaama/examples/client/common/object_firmware.c`
 - `server/src/main/java/ota/platform/server/config/LeshanServerConfiguration.java`
 - `server/src/main/java/ota/platform/server/controller/FirmwareController.java`
@@ -545,8 +573,8 @@ Milestone 1 Client foundation과 Milestone 2 Server foundation을 다시 구현�
 Device Integration Kit의 Adapter, Service, Download Transport와 Backend 경계도
 다시 설계하지 않는다.
 
-Package URI OTA vertical slice는 완료됐다.
-다음에는 PostgreSQL schema와 영구 Device Registry를 진행한다.
-STM32의 실제 crypto, Flash, Bootloader와 anti-rollback 구현은
-Device Integration Contract에 따라 장치 개발자가 통합한다.
+Linux와 STM32F429ZI Package URI OTA vertical slice는 완료됐다.
+다음에는 firmware artifact metadata와 storage/orchestration 경계를 결정한다.
+STM32 reference는 Flash와 Bootloader 통합 가능성까지 검증했으며, 제품용
+crypto, anti-rollback과 전원 차단 rollback은 장치 개발자가 통합한다.
 `/25` 또는 Gateway-하위 장치 protocol 방향으로 돌아가지 않는다.

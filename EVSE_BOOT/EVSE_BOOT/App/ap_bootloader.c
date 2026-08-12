@@ -36,6 +36,52 @@ static boot_protocol_parser_t s_protocol_parser;
 
 static uint8_t s_protocol_tx_frame[BOOT_PROTOCOL_MAX_FRAME_SIZE];
 
+#define AP_BOOT_STAGING_COPY_CHUNK_SIZE 512U
+
+static bool ApBootloader_ApplyStagedUpdate(
+    uint32_t image_size,
+    uint32_t image_crc32) {
+    uint32_t offset;
+
+    if ((image_size == 0U) ||
+        (image_size > BOOT_STAGING_CAPACITY) ||
+        (image_size > BOOT_APP_MAX_SIZE)) {
+        return false;
+    }
+
+    if (!ApBootUpdate_Start(
+            &s_update_context,
+            image_size,
+            image_crc32)) {
+        return false;
+    }
+
+    offset = 0U;
+
+    while (offset < image_size) {
+        uint32_t chunk_size = image_size - offset;
+        const uint8_t *source;
+
+        if (chunk_size > AP_BOOT_STAGING_COPY_CHUNK_SIZE)
+            chunk_size = AP_BOOT_STAGING_COPY_CHUNK_SIZE;
+
+        source = (const uint8_t *)(uintptr_t)(
+            BOOT_STAGING_START_ADDRESS + offset);
+
+        if (!ApBootUpdate_WriteData(
+                &s_update_context,
+                offset,
+                source,
+                chunk_size)) {
+            return false;
+        }
+
+        offset += chunk_size;
+    }
+
+    return ApBootUpdate_End(&s_update_context);
+}
+
 static bool ApBootloader_SendProtocolPacket(const boot_protocol_packet_t *packet) {
     uint16_t frame_length;
     mw_status_t middleware_status;
@@ -217,6 +263,9 @@ void ApBootloader_Run(void) {
     bool enter_bootloader_mode;
     bool button_requested;
     bool remote_update_requested;
+    bool staged_update_available;
+    uint32_t staged_image_size;
+    uint32_t staged_image_crc32;
 
     bsp_status_t boot_status;
 
@@ -225,6 +274,9 @@ void ApBootloader_Run(void) {
     enter_bootloader_mode = false;
     button_requested = false;
     remote_update_requested = false;
+    staged_update_available = false;
+    staged_image_size = 0U;
+    staged_image_crc32 = 0U;
 
     (void)ApBootConsole_SendString("[BOOT] Bootloader start\r\n");
 
@@ -268,6 +320,42 @@ void ApBootloader_Run(void) {
             // 삭제 실패 시에도 App 이동 x
             // 다음 Reset에서도 다시 Bootloader로 진입
             (void)ApBootConsole_SendString("[BOOT] Remote request clear error\r\n");
+        }
+        else {
+            boot_status = BspBoot_GetStagedUpdate(
+                &staged_update_available,
+                &staged_image_size,
+                &staged_image_crc32);
+
+            if (boot_status != BSP_STATUS_OK) {
+                (void)BspBoot_SetUpdateResult(false);
+                (void)ApBootConsole_SendString(
+                    "[BOOT] Staged metadata invalid\r\n");
+            }
+            else if (staged_update_available) {
+                (void)ApBootConsole_SendString(
+                    "[BOOT] Applying staged firmware\r\n");
+
+                if (ApBootloader_ApplyStagedUpdate(
+                        staged_image_size,
+                        staged_image_crc32)) {
+                    boot_status = BspBoot_ClearStagedUpdate();
+
+                    if (boot_status == BSP_STATUS_OK)
+                        boot_status = BspBoot_SetUpdateResult(true);
+
+                    if (boot_status == BSP_STATUS_OK) {
+                        (void)ApBootConsole_SendString(
+                            "[BOOT] Staged firmware applied\r\n");
+                        ApBootloader_JumpToApplication(true);
+                    }
+                }
+
+                (void)BspBoot_SetUpdateResult(false);
+                (void)BspBoot_ClearStagedUpdate();
+                (void)ApBootConsole_SendString(
+                    "[BOOT] Staged firmware apply failed\r\n");
+            }
         }
     }
 

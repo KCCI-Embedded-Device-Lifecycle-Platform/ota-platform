@@ -22,21 +22,7 @@ static const bsp_storage_sector_info_t s_application_sectors[] = {
     {HW_FLASH_SECTOR_8,  0x08080000UL, 0x080A0000UL},
     {HW_FLASH_SECTOR_9,  0x080A0000UL, 0x080C0000UL},
     {HW_FLASH_SECTOR_10, 0x080C0000UL, 0x080E0000UL},
-    {HW_FLASH_SECTOR_11, 0x080E0000UL, 0x08100000UL},
-
-    // Bank 2
-     {HW_FLASH_SECTOR_12, 0x08100000UL, 0x08104000UL},
-     {HW_FLASH_SECTOR_13, 0x08104000UL, 0x08108000UL},
-     {HW_FLASH_SECTOR_14, 0x08108000UL, 0x0810C000UL},
-    {HW_FLASH_SECTOR_15, 0x0810C000UL, 0x08110000UL},
-    {HW_FLASH_SECTOR_16, 0x08110000UL, 0x08120000UL},
-    {HW_FLASH_SECTOR_17, 0x08120000UL, 0x08140000UL},
-    {HW_FLASH_SECTOR_18, 0x08140000UL, 0x08160000UL},
-    {HW_FLASH_SECTOR_19, 0x08160000UL, 0x08180000UL},
-    {HW_FLASH_SECTOR_20, 0x08180000UL, 0x081A0000UL},
-    {HW_FLASH_SECTOR_21, 0x081A0000UL, 0x081C0000UL},
-    {HW_FLASH_SECTOR_22, 0x081C0000UL, 0x081E0000UL},
-    {HW_FLASH_SECTOR_23, 0x081E0000UL, 0x08200000UL}
+    {HW_FLASH_SECTOR_11, 0x080E0000UL, 0x08100000UL}
 };
 
 #define BSP_STORAGE_APPLICATION_SECTOR_COUNT (sizeof(s_application_sectors) / sizeof(s_application_sectors[0]))
@@ -128,7 +114,7 @@ bsp_storage_status_t BspStorage_Init(void) {
     if (BOOT_APP_START_ADDRESS != s_application_sectors[0].start_address)
         return BSP_STORAGE_STATUS_ERROR;
 
-    if (BOOT_FLASH_STACK_TOP != s_application_sectors[BSP_STORAGE_APPLICATION_SECTOR_COUNT - 1U].end_address)
+    if (BOOT_APP_END_ADDRESS != s_application_sectors[BSP_STORAGE_APPLICATION_SECTOR_COUNT - 1U].end_address)
         return BSP_STORAGE_STATUS_ERROR;
 
     if ((BOOT_APP_START_ADDRESS & (BSP_STORAGE_PROGRAM_UNIT_SIZE - 1U)) != 0U)
@@ -151,7 +137,7 @@ uint32_t BspStorage_GetApplicationStartAddress(void) {
 
 uint32_t BspStorage_GetApplicationCapacity(void) {
     // Application 저장 영역 최대 크기 반환
-    return BOOT_FLASH_STACK_TOP - BOOT_APP_START_ADDRESS;
+    return BOOT_APP_END_ADDRESS - BOOT_APP_START_ADDRESS;
 }
 
 bool BspStorage_IsImageSizeValid(uint32_t image_size) {

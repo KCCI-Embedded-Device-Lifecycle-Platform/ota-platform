@@ -5,6 +5,7 @@ add_library(
         include/firmware_update_backend.h
         include/firmware_update_service.h
         include/firmware_download_transport.h
+        include/lwm2m_transport.h
 )
 
 target_include_directories(

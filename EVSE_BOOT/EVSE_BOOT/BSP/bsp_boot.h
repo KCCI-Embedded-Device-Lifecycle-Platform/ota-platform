@@ -14,6 +14,13 @@ bsp_status_t BspBoot_GetButtonRequest(bool *requested);
 bsp_status_t BspBoot_GetRemoteUpdateRequest(bool *requested);
 bsp_status_t BspBoot_ClearRemoteUpdateRequest(void);
 
+bsp_status_t BspBoot_GetStagedUpdate(
+    bool *available,
+    uint32_t *image_size,
+    uint32_t *image_crc32);
+bsp_status_t BspBoot_ClearStagedUpdate(void);
+bsp_status_t BspBoot_SetUpdateResult(bool success);
+
 bool BspBoot_IsApplicationValid(void);
 
 bsp_status_t BspBoot_SetStatusLed(bool enabled);

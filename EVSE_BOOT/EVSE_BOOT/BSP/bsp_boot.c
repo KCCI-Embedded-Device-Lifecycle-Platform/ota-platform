@@ -142,9 +142,114 @@ bsp_status_t BspBoot_ClearRemoteUpdateRequest(void) {
     return BSP_STATUS_OK;
 }
 
+bsp_status_t BspBoot_GetStagedUpdate(
+    bool *available,
+    uint32_t *image_size,
+    uint32_t *image_crc32) {
+    uint32_t magic;
+    uint32_t inverse;
+    hw_status_t hw_status;
+
+    if ((available == NULL) ||
+        (image_size == NULL) ||
+        (image_crc32 == NULL)) {
+        return BSP_STATUS_INVALID_ARGUMENT;
+    }
+
+    *available = false;
+    *image_size = 0U;
+    *image_crc32 = 0U;
+
+    if (!s_initialized) return BSP_STATUS_NOT_INITIALIZED;
+
+    hw_status = HwBackup_ReadWord(
+        BOOT_STAGING_MAGIC_OFFSET,
+        &magic);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    hw_status = HwBackup_ReadWord(
+        BOOT_STAGING_INVERSE_OFFSET,
+        &inverse);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    if ((magic != BOOT_STAGING_MAGIC) ||
+        (inverse != BOOT_STAGING_MAGIC_INVERSE)) {
+        return BSP_STATUS_OK;
+    }
+
+    hw_status = HwBackup_ReadWord(
+        BOOT_STAGING_SIZE_OFFSET,
+        image_size);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    hw_status = HwBackup_ReadWord(
+        BOOT_STAGING_CRC32_OFFSET,
+        image_crc32);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    if ((*image_size == 0U) ||
+        (*image_size > BOOT_STAGING_CAPACITY) ||
+        (*image_size > BOOT_APP_MAX_SIZE)) {
+        return BSP_STATUS_ERROR;
+    }
+
+    *available = true;
+    return BSP_STATUS_OK;
+}
+
+bsp_status_t BspBoot_ClearStagedUpdate(void) {
+    hw_status_t hw_status;
+
+    if (!s_initialized) return BSP_STATUS_NOT_INITIALIZED;
+
+    hw_status = HwBackup_WriteWord(
+        BOOT_STAGING_INVERSE_OFFSET,
+        BOOT_UPDATE_REQUEST_CLEAR_VALUE);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    hw_status = HwBackup_WriteWord(
+        BOOT_STAGING_MAGIC_OFFSET,
+        BOOT_UPDATE_REQUEST_CLEAR_VALUE);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    hw_status = HwBackup_WriteWord(BOOT_STAGING_SIZE_OFFSET, 0U);
+
+    if (hw_status != HW_STATUS_OK)
+        return BspBoot_ConvertHwStatus(hw_status);
+
+    hw_status = HwBackup_WriteWord(BOOT_STAGING_CRC32_OFFSET, 0U);
+
+    return BspBoot_ConvertHwStatus(hw_status);
+}
+
+bsp_status_t BspBoot_SetUpdateResult(bool success) {
+    hw_status_t hw_status;
+
+    if (!s_initialized) return BSP_STATUS_NOT_INITIALIZED;
+
+    hw_status = HwBackup_WriteWord(
+        BOOT_UPDATE_RESULT_OFFSET,
+        success ? BOOT_UPDATE_RESULT_SUCCESS
+                : BOOT_UPDATE_RESULT_FAILURE);
+
+    return BspBoot_ConvertHwStatus(hw_status);
+}
+
 bool BspBoot_IsApplicationValid(void) {
     // Application Vector Table이 유효한지 검사
-    return HwSystem_IsVectorTableValid(BOOT_APP_START_ADDRESS, BOOT_FLASH_STACK_TOP);
+    return HwSystem_IsVectorTableValid(BOOT_APP_START_ADDRESS, BOOT_APP_END_ADDRESS);
 }
 
 bsp_status_t BspBoot_SetStatusLed(bool enabled) {
