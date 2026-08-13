@@ -8,15 +8,13 @@ import java.util.ArrayList;
 import ota.platform.server.firmware.FirmwareCapabilities;
 import ota.platform.server.firmware.FirmwareStatus;
 import ota.platform.server.firmware.FirmwareDownloadRequest;
+import ota.platform.server.firmware.FirmwareCommandResult;
+import ota.platform.server.firmware.FirmwareUpdateDeviceService;
 
 import org.eclipse.leshan.core.node.LwM2mResourceInstance;
-import org.eclipse.leshan.core.request.WriteRequest;
-import org.eclipse.leshan.core.response.WriteResponse;
 import org.eclipse.leshan.core.node.LwM2mResource;
 import org.eclipse.leshan.core.request.ReadRequest;
 import org.eclipse.leshan.core.response.ReadResponse;
-import org.eclipse.leshan.core.request.ExecuteRequest;
-import org.eclipse.leshan.core.response.ExecuteResponse;
 import org.eclipse.leshan.server.LeshanServer;
 import org.eclipse.leshan.server.registration.Registration;
 import org.springframework.http.HttpStatus;
@@ -32,9 +30,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 @RequestMapping("/api/devices")
 public class FirmwareController {
         private final LeshanServer leshanServer;
+        private final FirmwareUpdateDeviceService firmwareUpdateDeviceService;
 
-        public FirmwareController(LeshanServer leshanServer) {
+        public FirmwareController(
+                LeshanServer leshanServer,
+                FirmwareUpdateDeviceService firmwareUpdateDeviceService) {
                 this.leshanServer = leshanServer;
+                this.firmwareUpdateDeviceService =
+                        firmwareUpdateDeviceService;
         }
 
         @GetMapping("/{endpoint}/firmware/capabilities")
@@ -227,29 +230,23 @@ public class FirmwareController {
                         .body(Map.of("error", "packageUri is required"));
         }
 
-        Registration registration = leshanServer
-                .getRegistrationService()
-                .getByEndpoint(endpoint);
+        FirmwareCommandResult result =
+                firmwareUpdateDeviceService.requestDownload(
+                        endpoint,
+                        request.packageUri());
 
-        if (registration == null) {
+        if (result.status()
+                == FirmwareCommandResult.Status.DEVICE_OFFLINE) {
                 return ResponseEntity.notFound().build();
         }
 
-        WriteResponse response = leshanServer.send(
-                registration,
-                new WriteRequest(
-                        5,
-                        0,
-                        1,
-                        request.packageUri()));
-
-        if (response == null || !response.isSuccess()) {
+        if (!result.accepted()) {
                 return ResponseEntity
                         .status(HttpStatus.BAD_GATEWAY)
                         .body(Map.of(
                                 "endpoint", endpoint,
                                 "path", "/5/0/1",
-                                "error", String.valueOf(response)));
+                                "error", result.detail()));
         }
 
         return ResponseEntity
@@ -265,25 +262,21 @@ public class FirmwareController {
                 @PathVariable String endpoint)
                 throws InterruptedException {
 
-        Registration registration = leshanServer
-                .getRegistrationService()
-                .getByEndpoint(endpoint);
+        FirmwareCommandResult result =
+                firmwareUpdateDeviceService.requestInstall(endpoint);
 
-        if (registration == null) {
+        if (result.status()
+                == FirmwareCommandResult.Status.DEVICE_OFFLINE) {
                 return ResponseEntity.notFound().build();
         }
 
-        ExecuteResponse response = leshanServer.send(
-                registration,
-                new ExecuteRequest(5, 0, 2));
-
-        if (response == null || !response.isSuccess()) {
+        if (!result.accepted()) {
                 return ResponseEntity
                         .status(HttpStatus.BAD_GATEWAY)
                         .body(Map.of(
                                 "endpoint", endpoint,
                                 "path", "/5/0/2",
-                                "error", String.valueOf(response)));
+                                "error", result.detail()));
         }
 
         return ResponseEntity

@@ -1,4 +1,5 @@
 package ota.platform.server.listener;
+import ota.platform.server.hawkbit.HawkbitDmfPublisher;
 
 import java.util.Collection;
 
@@ -16,12 +17,24 @@ import org.springframework.stereotype.Component;
 public class DeviceRegistrationListener implements RegistrationListener {
 
     private LeshanServer leshanServer;
+    private final HawkbitDmfPublisher hawkbitDmfPublisher;
+    private final FirmwareObservationListener firmwareObservationListener;
+
     private static final Logger logger =
             LoggerFactory.getLogger(DeviceRegistrationListener.class);
+
+ 
+    public DeviceRegistrationListener(
+            HawkbitDmfPublisher hawkbitDmfPublisher,
+            FirmwareObservationListener firmwareObservationListener) {
+        this.hawkbitDmfPublisher = hawkbitDmfPublisher;
+        this.firmwareObservationListener = firmwareObservationListener;
+    }
 
     public void setLeshanServer(LeshanServer leshanServer) {
         this.leshanServer = leshanServer;
     }
+
 
     private void observeFirmwareResource(
         Registration registration,
@@ -37,6 +50,10 @@ public class DeviceRegistrationListener implements RegistrationListener {
                             "{} observation established: endpoint={}",
                             resourceName,
                             registration.getEndpoint());
+                    firmwareObservationListener.handleFirmwareResourceResponse(
+                            resourceId,
+                            registration,
+                            response);
                 } else {
                     logger.warn(
                             "{} observation rejected: endpoint={}, response={}",
@@ -62,7 +79,10 @@ public class DeviceRegistrationListener implements RegistrationListener {
                 "LwM2M client registered: endpoint={}, address={}",
                 registration.getEndpoint(),
                 registration.getSocketAddress());
-        
+
+        hawkbitDmfPublisher.publishThingCreated(
+                registration.getEndpoint());
+
         observeFirmwareResource(registration, 3, "Firmware State");
         observeFirmwareResource(registration, 5, "Firmware Update Result");
     }

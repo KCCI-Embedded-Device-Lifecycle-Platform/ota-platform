@@ -10,5 +10,67 @@ services:
     volumes:
       - ota-postgres-data:/var/lib/postgresql
 
+  hawkbit-postgres:
+    image: postgres:16.5-alpine
+    environment:
+      POSTGRES_DB: hawkbit
+      POSTGRES_USER: hawkbit
+      POSTGRES_PASSWORD: hawkbit_dev_password
+    volumes:
+      - hawkbit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d hawkbit -U hawkbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: hawkbit
+      RABBITMQ_DEFAULT_PASS: hawkbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  hawkbit:
+    image: hawkbit/hawkbit-update-server:1.1.0
+    environment:
+      SPRING_AUTOCONFIGURE_EXCLUDE: ""
+      HAWKBIT_DMF_ENABLED: "true"
+
+      PROFILES: postgresql
+      SPRING_DATASOURCE_URL: jdbc:postgresql://hawkbit-postgres:5432/hawkbit
+      SPRING_DATASOURCE_USERNAME: hawkbit
+      SPRING_DATASOURCE_PASSWORD: hawkbit_dev_password
+
+      SPRING_APPLICATION_JSON: >-
+        {
+          "hawkbit.artifact.url.protocols.download-http.hostname": "localhost",
+          "hawkbit.artifact.url.protocols.download-http.port": 8082,
+          "hawkbit.server.ddi.security.authentication.targettoken.enabled": true
+        }
+
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: hawkbit
+      SPRING_RABBITMQ_PASSWORD: hawkbit
+    ports:
+      - "8082:8080"
+    volumes:
+      - hawkbit-artifact-data:/app/artifactrepo
+    depends_on:
+      hawkbit-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   ota-postgres-data:
+  hawkbit-postgres-data:
+  hawkbit-artifact-data:
