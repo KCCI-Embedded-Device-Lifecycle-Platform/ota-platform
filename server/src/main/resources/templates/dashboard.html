@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OTA Platform</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            background: #f4f6f8;
+            color: #1f2937;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        th, td {
+            padding: 14px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+        }
+
+        .status {
+            font-weight: 600;
+        }
+
+        .online {
+            color: #15803d;
+        }
+
+        .offline {
+            color: #b91c1c;
+        }
+
+        .panel {
+            margin-bottom: 24px;
+            padding: 24px;
+            background: white;
+        }
+
+        form {
+            display: flex;
+            gap: 12px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+
+        label {
+            display: grid;
+            gap: 6px;
+        }
+
+        input, button {
+            padding: 9px;
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <header>
+        <h1>OTA Platform</h1>
+        <p>등록 장치와 LwM2M 연결 상태</p>
+    </header>
+
+    <section class="panel">
+        <h2>신규 장치 등록</h2>
+
+        <form id="device-create-form">
+            <label>
+                Endpoint
+                <input id="endpoint"
+                    maxlength="255"
+                    required>
+            </label>
+
+            <label>
+                표시 이름
+                <input id="display-name"
+                    maxlength="255">
+            </label>
+
+            <button type="submit">장치 등록</button>
+        </form>
+
+        <pre id="device-create-result"></pre>
+    </section>
+
+    <table>
+        <thead>
+        <tr>
+            <th>장치</th>
+            <th>Endpoint</th>
+            <th>관리 상태</th>
+            <th>LwM2M 연결</th>
+        </tr>
+        </thead>
+
+        <tbody>
+        <tr th:each="device : ${devices}">
+            <td>
+                <a th:href="@{/admin/devices/{endpoint}
+                        (endpoint=${device.endpoint})}"
+                th:text="${device.displayName != null
+                        ? device.displayName
+                        : device.endpoint}">
+                    Device
+                </a>
+            </td>
+            <td th:text="${device.endpoint}">endpoint</td>
+            <td th:text="${device.enabled ? 'Enabled' : 'Disabled'}">
+                Enabled
+            </td>
+            <td>
+                <span
+                    class="status"
+                    th:classappend="${device.online ? 'online' : 'offline'}"
+                    th:text="${device.online ? 'Online' : 'Offline'}">
+                    Offline
+                </span>
+            </td>
+        </tr>
+
+        <tr th:if="${#lists.isEmpty(devices)}">
+            <td colspan="4">등록된 장치가 없습니다.</td>
+        </tr>
+        </tbody>
+    </table>
+</main>
+
+<script>
+    document
+        .getElementById("device-create-form")
+        .addEventListener("submit", async event => {
+            event.preventDefault();
+
+            const endpoint =
+                document.getElementById("endpoint").value;
+            const displayName =
+                document.getElementById("display-name").value;
+            const result =
+                document.getElementById("device-create-result");
+
+            result.textContent = "등록 중...";
+
+            try {
+                const response = await fetch("/api/devices", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        endpoint,
+                        displayName: displayName || null
+                    })
+                });
+
+                const body = await response.text();
+
+                if (!response.ok) {
+                    result.textContent =
+                        `HTTP ${response.status}\n${body}`;
+                    return;
+                }
+
+                const device = JSON.parse(body);
+
+                window.location.href =
+                    `/admin/devices/${
+                        encodeURIComponent(device.endpoint)
+                    }`;
+            } catch (error) {
+                result.textContent =
+                    `요청 실패: ${error.message}`;
+            }
+        });
+</script>
+</body>
+</html>

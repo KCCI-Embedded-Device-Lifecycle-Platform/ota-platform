@@ -69,6 +69,18 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+  
+  hawkbit-ui:
+    image: hawkbit/hawkbit-ui:1.1.0
+    environment:
+      SPRING_APPLICATION_JSON: >-
+        {
+          "hawkbit.server.mgmtUrl": "http://hawkbit:8080"
+        }
+    ports:
+      - "8088:8088"
+    depends_on:
+      - hawkbit
 
 volumes:
   ota-postgres-data:

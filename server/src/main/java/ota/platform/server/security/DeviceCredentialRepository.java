@@ -58,51 +58,6 @@ public class DeviceCredentialRepository {
                         "secret_reference"));
     }
 
-    public ActiveDeviceCredential createPsk(
-            UUID deviceId,
-            String endpoint,
-            String identity,
-            String secretReference) {
-
-        UUID credentialId = UUID.randomUUID();
-
-        int updatedRows = jdbcClient.sql("""
-                INSERT INTO device_credentials (
-                    id,
-                    device_id,
-                    credential_type,
-                    identity,
-                    secret_reference
-                )
-                VALUES (
-                    :credentialId,
-                    :deviceId,
-                    'PSK',
-                    :identity,
-                    :secretReference
-                )
-                """)
-                .param("credentialId", credentialId)
-                .param("deviceId", deviceId)
-                .param("identity", identity)
-                .param(
-                        "secretReference",
-                        secretReference)
-                .update();
-
-        if (updatedRows != 1) {
-            throw new IllegalStateException(
-                    "Failed to create device credential");
-        }
-
-        return new ActiveDeviceCredential(
-                credentialId,
-                deviceId,
-                endpoint,
-                identity,
-                secretReference);
-    }
-
     public Optional<ActiveDeviceCredential> findActivePskByEndpoint(String endpoint) {
 
         return jdbcClient.sql("""
@@ -124,13 +79,95 @@ public class DeviceCredentialRepository {
                 .optional();
     }
 
+    public boolean revokeActivePskByEndpoint(String endpoint) {
+
+        int updatedRows = jdbcClient.sql("""
+                UPDATE device_credentials credential
+                SET status = 'REVOKED',
+                    revoked_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                FROM devices device
+                WHERE credential.device_id = device.id
+                AND device.endpoint = :endpoint
+                AND credential.status = 'ACTIVE'
+                AND credential.credential_type = 'PSK'
+                """)
+                .param("endpoint", endpoint)
+                .update();
+
+        return updatedRows == 1;
+    }
+
+    public ActiveDeviceCredential createEncryptedPsk(
+            UUID credentialId,
+            UUID deviceId,
+            String endpoint,
+            String identity,
+            byte[] encryptedSecret) {
+
+        String secretReference = "db:" + credentialId;
+
+        int updatedRows = jdbcClient.sql("""
+                INSERT INTO device_credentials (
+                    id,
+                    device_id,
+                    credential_type,
+                    identity,
+                    secret_reference,
+                    encrypted_secret
+                )
+                VALUES (
+                    :credentialId,
+                    :deviceId,
+                    'PSK',
+                    :identity,
+                    :secretReference,
+                    :encryptedSecret
+                )
+                """)
+                .param("credentialId", credentialId)
+                .param("deviceId", deviceId)
+                .param("identity", identity)
+                .param("secretReference", secretReference)
+                .param("encryptedSecret", encryptedSecret)
+                .update();
+
+        if (updatedRows != 1) {
+            throw new IllegalStateException(
+                    "Failed to create encrypted device credential");
+        }
+
+        return new ActiveDeviceCredential(
+                credentialId,
+                deviceId,
+                endpoint,
+                identity,
+                secretReference);
+    }
+
+    public Optional<byte[]> findEncryptedSecretById(
+            UUID credentialId) {
+
+        return jdbcClient.sql("""
+                SELECT encrypted_secret
+                FROM device_credentials
+                WHERE id = :credentialId
+                AND credential_type = 'PSK'
+                AND status = 'ACTIVE'
+                """)
+                .param("credentialId", credentialId)
+                .query((resultSet, rowNumber) ->
+                        resultSet.getBytes("encrypted_secret"))
+                .optional();
+    }
+
     @Transactional
-    public Optional<ActiveDeviceCredential>
-            rotateActivePsk(
-                    UUID deviceId,
-                    String endpoint,
-                    String identity,
-                    String secretReference) {
+    public Optional<ActiveDeviceCredential> rotateEncryptedPsk(
+            UUID credentialId,
+            UUID deviceId,
+            String endpoint,
+            String identity,
+            byte[] encryptedSecret) {
 
         int rotatedRows = jdbcClient.sql("""
                 UPDATE device_credentials
@@ -152,7 +189,7 @@ public class DeviceCredentialRepository {
                     "Multiple active PSK credentials found");
         }
 
-        UUID credentialId = UUID.randomUUID();
+        String secretReference = "db:" + credentialId;
 
         int insertedRows = jdbcClient.sql("""
                 INSERT INTO device_credentials (
@@ -160,25 +197,28 @@ public class DeviceCredentialRepository {
                     device_id,
                     credential_type,
                     identity,
-                    secret_reference
+                    secret_reference,
+                    encrypted_secret
                 )
                 VALUES (
                     :credentialId,
                     :deviceId,
                     'PSK',
                     :identity,
-                    :secretReference
+                    :secretReference,
+                    :encryptedSecret
                 )
                 """)
                 .param("credentialId", credentialId)
                 .param("deviceId", deviceId)
                 .param("identity", identity)
                 .param("secretReference", secretReference)
+                .param("encryptedSecret", encryptedSecret)
                 .update();
 
         if (insertedRows != 1) {
             throw new IllegalStateException(
-                    "Failed to create rotated credential");
+                    "Failed to create rotated encrypted credential");
         }
 
         return Optional.of(
@@ -188,25 +228,6 @@ public class DeviceCredentialRepository {
                         endpoint,
                         identity,
                         secretReference));
-    }
-
-    public boolean revokeActivePskByEndpoint(String endpoint) {
-
-        int updatedRows = jdbcClient.sql("""
-                UPDATE device_credentials credential
-                SET status = 'REVOKED',
-                    revoked_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                FROM devices device
-                WHERE credential.device_id = device.id
-                AND device.endpoint = :endpoint
-                AND credential.status = 'ACTIVE'
-                AND credential.credential_type = 'PSK'
-                """)
-                .param("endpoint", endpoint)
-                .update();
-
-        return updatedRows == 1;
     }
 
 }

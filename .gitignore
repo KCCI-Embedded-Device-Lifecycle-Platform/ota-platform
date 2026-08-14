@@ -9,3 +9,5 @@ __pycache__/
 
 __pycache__/
 *.pyc
+
+server/config/credential-master.key

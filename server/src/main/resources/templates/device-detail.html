@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Device Detail</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            background: #f4f6f8;
+            color: #1f2937;
+        }
+
+        main {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        section {
+            margin-top: 24px;
+            padding: 24px;
+            background: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+        }
+
+        .online {
+            color: #15803d;
+        }
+
+        .offline {
+            color: #b91c1c;
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <nav>
+        <a th:href="@{/admin}">← 장치 목록</a>
+        |
+        <a href="http://localhost:8088"
+           target="_blank"
+           rel="noopener">
+            hawkBit Firmware 관리
+        </a>
+    </nav>
+
+    <h1 th:text="${device.displayName != null
+            ? device.displayName
+            : device.endpoint}">
+        Device
+    </h1>
+
+    <section>
+        <h2>장치 상태</h2>
+
+        <p>
+            Endpoint:
+            <strong th:text="${device.endpoint}">endpoint</strong>
+        </p>
+
+        <p>
+            LwM2M:
+            <strong
+                th:class="${device.online ? 'online' : 'offline'}"
+                th:text="${device.online ? 'Online' : 'Offline'}">
+                Offline
+            </strong>
+        </p>
+
+        <p th:if="${registrationAddress != null}">
+            Address:
+            <span th:text="${registrationAddress}">address</span>
+        </p>
+    </section>
+
+    <section>
+        <h2>DTLS-PSK Credential</h2>
+
+        <p th:if="${activeCredential != null}">
+            상태: <strong>ACTIVE</strong><br>
+            Identity:
+            <code th:text="${activeCredential.identity}">identity</code><br>
+            Reference:
+            <code th:text="${activeCredential.secretReference}">
+                db:credential-id
+            </code>
+        </p>
+
+        <p th:if="${activeCredential == null}">
+            현재 활성 PSK가 없습니다.
+        </p>
+
+        <form id="credential-form"
+            th:attr="data-mode=${
+                activeCredential == null ? 'create' : 'rotate'
+            }">
+
+            <label>
+                Identity
+                <input id="credential-identity"
+                    maxlength="255"
+                    required
+                    th:value="${
+                        activeCredential != null
+                        ? activeCredential.identity
+                        : device.endpoint
+                    }">
+            </label>
+
+            <label>
+                새 PSK (hex)
+                <input id="credential-key"
+                    type="password"
+                    minlength="32"
+                    maxlength="128"
+                    pattern="[0-9a-fA-F]+"
+                    autocomplete="new-password"
+                    required>
+            </label>
+
+            <button type="submit"
+                    th:text="${
+                        activeCredential == null
+                        ? 'PSK 생성'
+                        : 'PSK 교체'
+                    }">
+                PSK 생성
+            </button>
+        </form>
+
+        <button id="credential-revoke"
+                type="button"
+                th:if="${activeCredential != null}">
+            PSK 폐기
+        </button>
+
+        <pre id="credential-result"></pre>
+    </section>
+
+    <section>
+        <h2>Registered Object Links</h2>
+
+        <ul th:if="${!#lists.isEmpty(objectLinks)}">
+            <li th:each="objectLink : ${objectLinks}">
+                <code th:text="${objectLink}">/0</code>
+            </li>
+        </ul>
+
+        <p th:if="${#lists.isEmpty(objectLinks)}">
+            현재 확인할 수 있는 Object Link가 없습니다.
+        </p>
+    </section>
+
+    <section>
+        <h2>Object 작업</h2>
+
+        <form id="resource-read-form">
+            <label>
+                Object ID
+                <input id="object-id"
+                    type="number"
+                    min="0"
+                    required>
+            </label>
+
+            <label>
+                Instance ID
+                <input id="instance-id"
+                    type="number"
+                    min="0"
+                    value="0"
+                    required>
+            </label>
+
+            <label>
+                Resource ID
+                <input id="resource-id"
+                    type="number"
+                    min="0"
+                    required>
+            </label>
+
+            <button type="submit">Resource 읽기</button>
+        </form>
+
+        <pre id="resource-result">
+        읽을 Resource 경로를 입력하세요.
+        </pre>
+
+        <table>
+            <thead>
+            <tr>
+                <th>경로</th>
+                <th>Object</th>
+                <th>작업</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            <tr>
+                <td>/5/0</td>
+                <td>Firmware Update 1.2</td>
+                <td>
+                    <a th:href="@{/api/devices/{endpoint}/firmware/status
+                            (endpoint=${device.endpoint})}">
+                        상태 읽기
+                    </a>
+                </td>
+            </tr>
+
+            <tr>
+                <td>/33000/0</td>
+                <td>BMS</td>
+                <td>
+                    <a th:href="@{/api/devices/{endpoint}/bms/voltage
+                            (endpoint=${device.endpoint})}">
+                        전압 읽기
+                    </a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+<script th:inline="javascript">
+    const endpoint = /*[[${device.endpoint}]]*/ "";
+
+    document
+        .getElementById("resource-read-form")
+        .addEventListener("submit", async event => {
+            event.preventDefault();
+
+            const objectId =
+                document.getElementById("object-id").value;
+            const instanceId =
+                document.getElementById("instance-id").value;
+            const resourceId =
+                document.getElementById("resource-id").value;
+            const result =
+                document.getElementById("resource-result");
+
+            const path =
+                `/api/devices/${encodeURIComponent(endpoint)}`
+                + `/lwm2m/${objectId}/${instanceId}/${resourceId}`;
+
+            result.textContent = "LwM2M Read 요청 중...";
+
+            try {
+                const response = await fetch(path);
+                const body = await response.text();
+
+                if (!response.ok) {
+                    result.textContent =
+                        `HTTP ${response.status}\n${body}`;
+                    return;
+                }
+
+                result.textContent =
+                    JSON.stringify(JSON.parse(body), null, 2);
+
+            } catch (error) {
+                result.textContent =
+                    `요청 실패: ${error.message}`;
+            }
+        });
+
+    const credentialForm =
+        document.getElementById("credential-form");
+    const credentialResult =
+        document.getElementById("credential-result");
+
+    credentialForm.addEventListener("submit", async event => {
+        event.preventDefault();
+
+        const mode = credentialForm.dataset.mode;
+        const identity =
+            document.getElementById("credential-identity").value;
+        const keyHex =
+            document.getElementById("credential-key").value;
+
+        const suffix = mode === "rotate" ? "/rotate" : "";
+        const path =
+            `/api/devices/${encodeURIComponent(endpoint)}`
+            + `/credentials/psk${suffix}`;
+
+        credentialResult.textContent =
+            mode === "rotate" ? "PSK 교체 중..." : "PSK 생성 중...";
+
+        try {
+            const response = await fetch(path, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    identity,
+                    keyHex
+                })
+            });
+
+            const body = await response.text();
+
+            if (!response.ok) {
+                credentialResult.textContent =
+                    `HTTP ${response.status}\n${body}`;
+                return;
+            }
+
+            document.getElementById("credential-key").value = "";
+            window.location.reload();
+        } catch (error) {
+            credentialResult.textContent =
+                `요청 실패: ${error.message}`;
+        }
+    });
+
+    const revokeButton =
+        document.getElementById("credential-revoke");
+
+    if (revokeButton != null) {
+        revokeButton.addEventListener("click", async () => {
+            if (!window.confirm(
+                    "활성 PSK를 폐기하고 DTLS 연결을 종료할까요?")) {
+                return;
+            }
+
+            credentialResult.textContent = "PSK 폐기 중...";
+
+            const path =
+                `/api/devices/${encodeURIComponent(endpoint)}`
+                + "/credentials/psk/revoke";
+
+            try {
+                const response = await fetch(path, {
+                    method: "POST"
+                });
+
+                if (!response.ok) {
+                    credentialResult.textContent =
+                        `HTTP ${response.status}\n`
+                        + await response.text();
+                    return;
+                }
+
+                window.location.reload();
+            } catch (error) {
+                credentialResult.textContent =
+                    `요청 실패: ${error.message}`;
+            }
+        });
+    }
+</script>
+</body>
+</html>
